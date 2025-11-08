@@ -373,6 +373,120 @@ struct QueryResult:
         """Check if field is NULL."""
         return self.rows[row_idx].fields[col_idx].is_null
 
+    # ========================================================================
+    # Typed Accessors - Numeric Types
+    # ========================================================================
+
+    fn get_int2(self, row_idx: Int, col_idx: Int) raises -> Int16:
+        """
+        Get field value as INT2 (SMALLINT).
+
+        Args:
+            row_idx: Row index
+            col_idx: Column index
+
+        Returns:
+            Parsed Int16 value
+
+        Raises:
+            Error if field is NULL or cannot be decoded as INT2
+        """
+        from ..types.numeric import decode_int2
+
+        if self.is_null(row_idx, col_idx):
+            raise Error("Cannot get INT2 from NULL field")
+
+        var value_str = self.get_value(row_idx, col_idx)
+        return decode_int2(value_str)
+
+    fn get_int4(self, row_idx: Int, col_idx: Int) raises -> Int32:
+        """
+        Get field value as INT4 (INTEGER).
+
+        Args:
+            row_idx: Row index
+            col_idx: Column index
+
+        Returns:
+            Parsed Int32 value
+
+        Raises:
+            Error if field is NULL or cannot be decoded as INT4
+        """
+        from ..types.numeric import decode_int4
+
+        if self.is_null(row_idx, col_idx):
+            raise Error("Cannot get INT4 from NULL field")
+
+        var value_str = self.get_value(row_idx, col_idx)
+        return decode_int4(value_str)
+
+    fn get_int8(self, row_idx: Int, col_idx: Int) raises -> Int64:
+        """
+        Get field value as INT8 (BIGINT).
+
+        Args:
+            row_idx: Row index
+            col_idx: Column index
+
+        Returns:
+            Parsed Int64 value
+
+        Raises:
+            Error if field is NULL or cannot be decoded as INT8
+        """
+        from ..types.numeric import decode_int8
+
+        if self.is_null(row_idx, col_idx):
+            raise Error("Cannot get INT8 from NULL field")
+
+        var value_str = self.get_value(row_idx, col_idx)
+        return decode_int8(value_str)
+
+    fn get_float8(self, row_idx: Int, col_idx: Int) raises -> Float64:
+        """
+        Get field value as FLOAT8 (DOUBLE PRECISION).
+
+        Args:
+            row_idx: Row index
+            col_idx: Column index
+
+        Returns:
+            Parsed Float64 value
+
+        Raises:
+            Error if field is NULL or cannot be decoded as FLOAT8
+        """
+        from ..types.numeric import decode_float8
+
+        if self.is_null(row_idx, col_idx):
+            raise Error("Cannot get FLOAT8 from NULL field")
+
+        var value_str = self.get_value(row_idx, col_idx)
+        return decode_float8(value_str)
+
+    fn get_float4(self, row_idx: Int, col_idx: Int) raises -> Float32:
+        """
+        Get field value as FLOAT4 (REAL).
+
+        Args:
+            row_idx: Row index
+            col_idx: Column index
+
+        Returns:
+            Parsed Float32 value
+
+        Raises:
+            Error if field is NULL or cannot be decoded as FLOAT4
+        """
+        from ..types.numeric import decode_float4
+
+        if self.is_null(row_idx, col_idx):
+            raise Error("Cannot get FLOAT4 from NULL field")
+
+        var value_str = self.get_value(row_idx, col_idx)
+        return decode_float4(value_str)
+
 
 # ============================================================================
 # PostgreSQL Type OIDs (for reference)
