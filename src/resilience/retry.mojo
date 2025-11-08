@@ -322,3 +322,111 @@ fn calculate_delay_with_jitter(base_delay_ms: Int, jitter_percent: Float64) -> I
         final_delay = 0
 
     return Int(final_delay)
+
+
+# ============================================================================
+# Retry Result Wrapper
+# ============================================================================
+
+@value
+struct RetryResult[T]:
+    """
+    Result of a retry operation.
+
+    Contains the result and metadata about the retry attempts.
+    """
+    var value: T
+    var attempts: Int
+    var total_delay_ms: Int
+    var succeeded: Bool
+    var last_error: String
+
+    fn __init__(inout self, value: T, attempts: Int, total_delay_ms: Int):
+        """Successful retry result."""
+        self.value = value
+        self.attempts = attempts
+        self.total_delay_ms = total_delay_ms
+        self.succeeded = True
+        self.last_error = ""
+
+
+# ============================================================================
+# Retry Execution Helpers
+# ============================================================================
+
+fn execute_with_retry[T](
+    func: fn() raises -> T,
+    inout policy: RetryPolicy,
+    inout metrics: RetryMetrics,
+    operation_name: String
+) raises -> T:
+    """
+    Execute a function with retry logic.
+
+    Args:
+        func: Function to execute
+        policy: Retry policy
+        metrics: Retry metrics
+        operation_name: Name of operation (for logging)
+
+    Returns:
+        Result of the function
+
+    Raises:
+        Error if all retries exhausted
+    """
+    var total_delay_ms = 0
+
+    while True:
+        try:
+            var result = func()
+
+            # Record successful retry if we had failures
+            if policy.attempt_count > 0:
+                metrics.record_retry(policy.attempt_count, True, total_delay_ms)
+
+            return result
+
+        except e:
+            var error_msg = str(e)
+
+            # Check if we should retry
+            if policy.should_retry(error_msg):
+                # Calculate delay
+                var delay_ms = policy.get_delay_ms()
+                total_delay_ms += delay_ms
+
+                # Sleep before retry
+                sleep_ms(delay_ms)
+
+                # Continue to next attempt
+                continue
+            else:
+                # No more retries, record failure
+                metrics.record_retry(policy.attempt_count, False, total_delay_ms)
+                raise e
+
+
+fn retry_operation(
+    func: fn() raises -> None,
+    inout policy: RetryPolicy,
+    operation_name: String
+) raises:
+    """
+    Retry an operation that doesn't return a value.
+
+    Args:
+        func: Function to execute
+        policy: Retry policy
+        operation_name: Name of operation
+
+    Raises:
+        Error if all retries exhausted
+    """
+    var metrics = RetryMetrics()
+
+    fn wrapper() raises -> Int:
+        func()
+        return 0
+
+    var _ = execute_with_retry(wrapper, policy, metrics, operation_name)
