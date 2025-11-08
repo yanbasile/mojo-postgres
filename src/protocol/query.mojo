@@ -487,6 +487,98 @@ struct QueryResult:
         var value_str = self.get_value(row_idx, col_idx)
         return decode_float4(value_str)
 
+    # ========================================================================
+    # Typed Accessors - Boolean and Text Types
+    # ========================================================================
+
+    fn get_bool(self, row_idx: Int, col_idx: Int) raises -> Bool:
+        """
+        Get field value as BOOLEAN.
+
+        PostgreSQL BOOLEAN accepts many representations:
+        - True: 't', 'true', 'yes', 'on', '1' (case-insensitive)
+        - False: 'f', 'false', 'no', 'off', '0' (case-insensitive)
+
+        Args:
+            row_idx: Row index
+            col_idx: Column index
+
+        Returns:
+            Parsed Bool value
+
+        Raises:
+            Error if field is NULL or cannot be decoded as BOOLEAN
+
+        Example:
+            var result = conn.query("SELECT active FROM users WHERE id = 1")
+            var is_active = result.get_bool(0, 0)  # True or False
+        """
+        from ..types.text import decode_boolean
+
+        if self.is_null(row_idx, col_idx):
+            raise Error("Cannot get BOOLEAN from NULL field")
+
+        var value_str = self.get_value(row_idx, col_idx)
+        return decode_boolean(value_str)
+
+    fn get_text(self, row_idx: Int, col_idx: Int) raises -> String:
+        """
+        Get field value as TEXT.
+
+        This is equivalent to get_value() but provides a consistent API
+        for type-safe access. TEXT values are already String in the protocol.
+
+        Args:
+            row_idx: Row index
+            col_idx: Column index
+
+        Returns:
+            String value
+
+        Raises:
+            Error if field is NULL
+
+        Example:
+            var result = conn.query("SELECT name FROM users WHERE id = 1")
+            var name = result.get_text(0, 0)  # String
+        """
+        from ..types.text import decode_text
+
+        if self.is_null(row_idx, col_idx):
+            raise Error("Cannot get TEXT from NULL field")
+
+        var value_str = self.get_value(row_idx, col_idx)
+        return decode_text(value_str)
+
+    fn get_varchar(self, row_idx: Int, col_idx: Int) raises -> String:
+        """
+        Get field value as VARCHAR.
+
+        VARCHAR is the same as TEXT in PostgreSQL. This accessor provides
+        a convenient API for explicit VARCHAR columns.
+
+        Args:
+            row_idx: Row index
+            col_idx: Column index
+
+        Returns:
+            String value
+
+        Raises:
+            Error if field is NULL
+
+        Example:
+            var result = conn.query("SELECT email FROM users WHERE id = 1")
+            var email = result.get_varchar(0, 0)  # String
+        """
+        from ..types.text import decode_varchar
+
+        if self.is_null(row_idx, col_idx):
+            raise Error("Cannot get VARCHAR from NULL field")
+
+        var value_str = self.get_value(row_idx, col_idx)
+        return decode_varchar(value_str)
+
 
 # ============================================================================
 # PostgreSQL Type OIDs (for reference)
