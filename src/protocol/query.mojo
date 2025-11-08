@@ -16,6 +16,7 @@ from .connection import to_network_bytes_int32, from_network_bytes_int32, from_n
 from ..types.temporal import Timestamp, TimestampTZ, Date, Time
 from ..types.numeric_jsonb import Numeric, JsonValue
 from ..types.array_types import Int2Array, Int4Array, Int8Array, Float4Array, Float8Array, TextArray, BoolArray
+from ..types.additional_types import UUID, INET, CIDR, INTERVAL
 
 
 # ============================================================================
@@ -927,6 +928,98 @@ struct QueryResult:
 
         var value_str = self.get_value(row_idx, col_idx)
         return parse_bool_array(value_str)
+
+    fn get_uuid(self, row_idx: Int, col_idx: Int) raises -> owned UUID:
+        """
+        Get field value as UUID.
+
+        Args:
+            row_idx: Row index
+            col_idx: Column index
+
+        Returns:
+            UUID
+
+        Example:
+            var result = conn.query("SELECT gen_random_uuid()")
+            var uuid = result.get_uuid(0, 0)
+        """
+        from ..types.additional_types import parse_uuid
+
+        if self.is_null(row_idx, col_idx):
+            raise Error("Cannot get UUID from NULL field")
+
+        var value_str = self.get_value(row_idx, col_idx)
+        return parse_uuid(value_str)
+
+    fn get_inet(self, row_idx: Int, col_idx: Int) raises -> owned INET:
+        """
+        Get field value as INET (IP address with optional netmask).
+
+        Args:
+            row_idx: Row index
+            col_idx: Column index
+
+        Returns:
+            INET
+
+        Example:
+            var result = conn.query("SELECT '192.168.1.5/24'::INET")
+            var ip = result.get_inet(0, 0)
+        """
+        from ..types.additional_types import parse_inet
+
+        if self.is_null(row_idx, col_idx):
+            raise Error("Cannot get INET from NULL field")
+
+        var value_str = self.get_value(row_idx, col_idx)
+        return parse_inet(value_str)
+
+    fn get_cidr(self, row_idx: Int, col_idx: Int) raises -> owned CIDR:
+        """
+        Get field value as CIDR (network address).
+
+        Args:
+            row_idx: Row index
+            col_idx: Column index
+
+        Returns:
+            CIDR
+
+        Example:
+            var result = conn.query("SELECT '192.168.1.0/24'::CIDR")
+            var net = result.get_cidr(0, 0)
+        """
+        from ..types.additional_types import parse_cidr
+
+        if self.is_null(row_idx, col_idx):
+            raise Error("Cannot get CIDR from NULL field")
+
+        var value_str = self.get_value(row_idx, col_idx)
+        return parse_cidr(value_str)
+
+    fn get_interval(self, row_idx: Int, col_idx: Int) raises -> owned INTERVAL:
+        """
+        Get field value as INTERVAL.
+
+        Args:
+            row_idx: Row index
+            col_idx: Column index
+
+        Returns:
+            INTERVAL
+
+        Example:
+            var result = conn.query("SELECT INTERVAL '2 days 3 hours'")
+            var interval = result.get_interval(0, 0)
+        """
+        from ..types.additional_types import parse_interval
+
+        if self.is_null(row_idx, col_idx):
+            raise Error("Cannot get INTERVAL from NULL field")
+
+        var value_str = self.get_value(row_idx, col_idx)
+        return parse_interval(value_str)
 
 
 # ============================================================================
