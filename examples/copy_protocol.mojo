@@ -294,6 +294,138 @@ fn example4_error_handling() raises:
     print("\n✅ Example 4 complete!\n")
 
 
+fn example5_copy_to_export() raises:
+    """Example 5: COPY TO for data export."""
+    print("=" * 70)
+    print("Example 5: COPY TO (Export Data)")
+    print("=" * 70)
+
+    var conn = PostgresConnection("localhost", 5432)
+    conn.connect("test", "test", "test")
+
+    # Create and populate test table
+    var _ = conn.query("DROP TABLE IF EXISTS export_demo")
+    var __ = conn.query("""
+        CREATE TABLE export_demo (
+            id SERIAL PRIMARY KEY,
+            name TEXT,
+            value INT
+        )
+    """)
+
+    # Insert some data
+    var ___ = conn.query("INSERT INTO export_demo (name, value) VALUES ('Item1', 100)")
+    var ____ = conn.query("INSERT INTO export_demo (name, value) VALUES ('Item2', 200)")
+    var _____ = conn.query("INSERT INTO export_demo (name, value) VALUES ('Item3', 300)")
+
+    print("✅ Table created and populated with 3 rows")
+
+    # Export data using COPY TO
+    print("\n🚀 Executing COPY TO STDOUT...")
+    var result = conn.copy_to("COPY export_demo TO STDOUT")
+
+    print("✅ COPY TO completed")
+    print("   Exported " + String(result.row_count()) + " rows")
+
+    # Display exported data
+    print("\n📊 Exported data:")
+    for i in range(result.row_count()):
+        var row_data = result.get_value(i, 0)
+        print("  " + row_data)
+
+    # Export with custom query
+    print("\n🚀 Executing COPY with SELECT query...")
+    var result2 = conn.copy_to("COPY (SELECT name, value FROM export_demo WHERE value > 150) TO STDOUT")
+
+    print("✅ COPY TO with query completed")
+    print("   Exported " + String(result2.row_count()) + " rows (filtered)")
+
+    print("\n📊 Filtered data (value > 150):")
+    for i in range(result2.row_count()):
+        var row_data = result2.get_value(i, 0)
+        print("  " + row_data)
+
+    conn.close()
+    print("\n✅ Example 5 complete!\n")
+
+
+fn example6_copy_round_trip() raises:
+    """Example 6: Full round-trip - COPY TO then COPY FROM."""
+    print("=" * 70)
+    print("Example 6: Round-Trip (Export then Import)")
+    print("=" * 70)
+
+    var conn = PostgresConnection("localhost", 5432)
+    conn.connect("test", "test", "test")
+
+    # Create source table with data
+    var _ = conn.query("DROP TABLE IF EXISTS source_table")
+    var __ = conn.query("CREATE TABLE source_table (id INT, name TEXT, active BOOLEAN)")
+
+    var ___ = conn.query("INSERT INTO source_table VALUES (1, 'Alice', true)")
+    var ____ = conn.query("INSERT INTO source_table VALUES (2, 'Bob', false)")
+    var _____ = conn.query("INSERT INTO source_table VALUES (3, 'Charlie', true)")
+
+    print("✅ Source table created with 3 rows")
+
+    # Step 1: Export using COPY TO
+    print("\n📤 Exporting data...")
+    var exported = conn.copy_to("COPY source_table TO STDOUT")
+    print("✅ Exported " + String(exported.row_count()) + " rows")
+
+    # Create destination table
+    var _a = conn.query("DROP TABLE IF EXISTS dest_table")
+    var _b = conn.query("CREATE TABLE dest_table (id INT, name TEXT, active BOOLEAN)")
+
+    # Step 2: Parse exported data and import using COPY FROM
+    print("\n📥 Importing data...")
+
+    var columns = List[String]()
+    columns.append("id")
+    columns.append("name")
+    columns.append("active")
+
+    var rows = List[List[String]]()
+
+    # Parse tab-delimited rows
+    for i in range(exported.row_count()):
+        var row_data = exported.get_value(i, 0)
+        var values = List[String]()
+
+        # Split by tabs
+        var current_val = String("")
+        for j in range(len(row_data)):
+            if row_data[j] == '\t':
+                values.append(current_val)
+                current_val = String("")
+            else:
+                current_val += row_data[j]
+        values.append(current_val)  # Last value
+
+        rows.append(values)
+
+    conn.copy_from("dest_table", columns, rows)
+    print("✅ Imported " + String(len(rows)) + " rows")
+
+    # Verify data
+    var result = conn.query("SELECT COUNT(*) FROM dest_table")
+    var count = result.get_int4(0, 0)
+    print("✅ Destination table has " + String(count) + " rows")
+
+    # Show sample data
+    var sample = conn.query("SELECT id, name, active FROM dest_table ORDER BY id")
+    print("\n📊 Imported data:")
+    for i in range(sample.row_count()):
+        var id = sample.get_int4(i, 0)
+        var name = sample.get_value(i, 1)
+        var active = sample.get_boolean(i, 2)
+        var status = "active" if active else "inactive"
+        print("  [" + String(id) + "] " + name + " (" + status + ")")
+
+    conn.close()
+    print("\n✅ Example 6 complete!\n")
+
+
 fn main() raises:
     print("\n")
     print("🔥 COPY Protocol Examples")
@@ -305,6 +437,8 @@ fn main() raises:
     example2_large_dataset()
     example3_performance_comparison()
     example4_error_handling()
+    example5_copy_to_export()
+    example6_copy_round_trip()
 
     print("=" * 70)
     print("🎉 All examples completed successfully!")
@@ -312,7 +446,9 @@ fn main() raises:
     print("\n💡 Key Takeaways:")
     print("   - COPY FROM is 100-200x faster than individual INSERTs")
     print("   - COPY FROM is 10-20x faster than batch INSERTs")
+    print("   - COPY TO provides efficient bulk data export")
     print("   - Use COPY for bulk data loading (ETL, migrations, imports)")
     print("   - COPY supports both text and binary formats")
     print("   - COPY operations are transactional (all-or-nothing)")
+    print("   - Round-trip COPY TO/FROM enables fast data migration")
     print("\n")

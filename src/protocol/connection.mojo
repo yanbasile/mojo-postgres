@@ -1183,6 +1183,147 @@ struct PostgresConnection:
                 # Unexpected message
                 raise Error("Unexpected message during COPY: " + chr(mtype))
 
+    fn copy_to(inout self, query: String) raises -> QueryResult:
+        """
+        Execute COPY TO operation for bulk data export.
+
+        COPY TO exports data from PostgreSQL to the client.
+
+        Protocol Flow:
+        1. Send Query: "COPY (SELECT ...) TO STDOUT"
+        2. Receive CopyOutResponse ('H')
+        3. Receive CopyData ('d') messages with rows
+        4. Receive CopyDone ('c')
+        5. Receive CommandComplete ('C')
+        6. Receive ReadyForQuery ('Z')
+
+        Args:
+            query: COPY TO query (e.g., "COPY table TO STDOUT" or "COPY (SELECT ...) TO STDOUT")
+
+        Returns:
+            QueryResult with exported data
+
+        Raises:
+            Error if COPY fails
+
+        Example:
+            var result = conn.copy_to("COPY users TO STDOUT")
+            # or
+            var result = conn.copy_to("COPY (SELECT * FROM users WHERE active = true) TO STDOUT")
+        """
+        from .copy_protocol import MSG_COPY_OUT_RESPONSE
+
+        # Step 1: Send COPY TO query
+        var query_msg = List[UInt8]()
+        query_msg.append(ord('Q'))  # Query message type
+
+        var sql_bytes = List[UInt8]()
+        for i in range(len(query)):
+            sql_bytes.append(ord(query[i]))
+        sql_bytes.append(0)  # Null terminator
+
+        var msg_len = 4 + len(sql_bytes)
+        var length_bytes = to_network_bytes_int32(msg_len)
+        for i in range(len(length_bytes)):
+            query_msg.append(length_bytes[i])
+        for i in range(len(sql_bytes)):
+            query_msg.append(sql_bytes[i])
+
+        self._send_bytes(query_msg)
+
+        # Step 2: Wait for CopyOutResponse ('H')
+        var resp = self._read_message()
+        var msg_type = Int(resp[0])
+
+        if msg_type != MSG_COPY_OUT_RESPONSE:
+            # Check for error
+            if msg_type == ord('E'):
+                var error_msg = self._parse_error_message(resp)
+                raise Error("COPY TO failed: " + error_msg)
+            raise Error("Expected CopyOutResponse ('H'), got: " + chr(msg_type))
+
+        # Parse CopyOutResponse to get format (text or binary) and column count
+        # Format: 'H' + length + format (1 byte) + num_columns (2 bytes) + format_codes (2 bytes each)
+        # For now, we'll just collect the data
+
+        # Step 3: Receive CopyData messages until CopyDone
+        var all_data = List[UInt8]()
+
+        while True:
+            var msg = self._read_message()
+            var mtype = Int(msg[0])
+
+            if mtype == ord('d'):  # CopyData
+                # Extract data (skip message type and length)
+                var data_start = 5  # 1 byte type + 4 bytes length
+                for i in range(data_start, len(msg)):
+                    all_data.append(msg[i])
+            elif mtype == ord('c'):  # CopyDone
+                # COPY complete
+                break
+            elif mtype == ord('E'):  # Error
+                var error_msg = self._parse_error_message(msg)
+                raise Error("COPY TO failed: " + error_msg)
+            else:
+                raise Error("Unexpected message during COPY TO: " + chr(mtype))
+
+        # Step 4: Wait for CommandComplete ('C') and ReadyForQuery ('Z')
+        while True:
+            var msg = self._read_message()
+            var mtype = Int(msg[0])
+
+            if mtype == ord('C'):
+                # CommandComplete
+                continue
+            elif mtype == ord('Z'):
+                # ReadyForQuery - done!
+                break
+            elif mtype == ord('E'):
+                # Error
+                var error_msg = self._parse_error_message(msg)
+                raise Error("COPY TO failed: " + error_msg)
+
+        # Parse the received data as tab-delimited text format
+        # For simplicity, we'll create a QueryResult with the raw data
+        # In a full implementation, we'd parse columns and rows properly
+
+        # Create a simple result with the data as a single TEXT column
+        var result = QueryResult()
+
+        # Parse rows (newline-delimited)
+        var current_row_data = List[UInt8]()
+        for i in range(len(all_data)):
+            var byte = all_data[i]
+            if byte == ord('\n'):
+                # End of row - convert to string and add
+                var row_str = String("")
+                for j in range(len(current_row_data)):
+                    row_str += chr(Int(current_row_data[j]))
+
+                # Add row to result (as single column for now)
+                var col = ColumnInfo("data", 25)  # 25 = TEXT OID
+                if result.column_count() == 0:
+                    result.add_column(col)
+                result.add_row_value(row_str)
+
+                # Reset for next row
+                current_row_data = List[UInt8]()
+            else:
+                current_row_data.append(byte)
+
+        # Handle last row if no trailing newline
+        if len(current_row_data) > 0:
+            var row_str = String("")
+            for j in range(len(current_row_data)):
+                row_str += chr(Int(current_row_data[j]))
+
+            var col = ColumnInfo("data", 25)
+            if result.column_count() == 0:
+                result.add_column(col)
+            result.add_row_value(row_str)
+
+        return result^
+
     fn close(inout self):
         """Close the connection gracefully."""
         if self.socket_fd >= 0:

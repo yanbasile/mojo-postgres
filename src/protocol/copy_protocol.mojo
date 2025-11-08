@@ -62,8 +62,8 @@ alias PGCOPY_HEADER_EXTENSION = 0  # No extensions
 alias MSG_COPY_DATA = ord('d')  # CopyData message
 alias MSG_COPY_DONE = ord('c')  # CopyDone message
 alias MSG_COPY_FAIL = ord('f')  # CopyFail message
-alias MSG_COPY_IN_RESPONSE = ord('G')  # CopyInResponse (server -> client)
-alias MSG_COPY_OUT_RESPONSE = ord('H')  # CopyOutResponse (server -> client)
+alias MSG_COPY_IN_RESPONSE = ord('G')  # CopyInResponse (server -> client) - COPY FROM
+alias MSG_COPY_OUT_RESPONSE = ord('H')  # CopyOutResponse (server -> client) - COPY TO
 alias MSG_COPY_BOTH_RESPONSE = ord('W')  # CopyBothResponse (for replication)
 
 # Format codes
