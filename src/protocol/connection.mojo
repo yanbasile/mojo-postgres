@@ -1042,6 +1042,147 @@ struct PostgresConnection:
 
         return result^
 
+    fn copy_from(inout self, table: String, columns: List[String], rows: List[List[String]], use_binary: Bool = False) raises:
+        """
+        Execute COPY FROM operation for bulk data insertion.
+
+        COPY is 100-200x faster than individual INSERTs for bulk data.
+
+        Protocol Flow:
+        1. Send Query: "COPY table (columns) FROM STDIN"
+        2. Receive CopyInResponse ('G')
+        3. Send CopyData ('d') messages with rows
+        4. Send CopyDone ('c')
+        5. Receive CommandComplete ('C')
+        6. Receive ReadyForQuery ('Z')
+
+        Args:
+            table: Table name
+            columns: Column names
+            rows: Data rows (each row is list of column values)
+            use_binary: Use binary format (default: text format)
+
+        Raises:
+            Error if COPY fails
+
+        Example:
+            var cols = List[String]()
+            cols.append("name")
+            cols.append("age")
+
+            var rows = List[List[String]]()
+            var row1 = List[String]()
+            row1.append("Alice")
+            row1.append("30")
+            rows.append(row1)
+
+            conn.copy_from("users", cols, rows)
+        """
+        from .copy_protocol import build_copy_data_message, build_copy_done_message, build_copy_row_text
+        from .copy_protocol import build_copy_header_binary, build_copy_row_binary, build_copy_trailer_binary
+        from .copy_protocol import MSG_COPY_IN_RESPONSE
+
+        # Step 1: Build and send COPY command
+        var sql = "COPY " + table + " ("
+        for i in range(len(columns)):
+            sql += columns[i]
+            if i < len(columns) - 1:
+                sql += ", "
+        sql += ") FROM STDIN"
+
+        if use_binary:
+            sql += " WITH (FORMAT BINARY)"
+
+        # Send as Query message
+        var query_msg = List[UInt8]()
+        query_msg.append(ord('Q'))  # Query message type
+
+        var sql_bytes = List[UInt8]()
+        for i in range(len(sql)):
+            sql_bytes.append(ord(sql[i]))
+        sql_bytes.append(0)  # Null terminator
+
+        var msg_len = 4 + len(sql_bytes)
+        var length_bytes = to_network_bytes_int32(msg_len)
+        for i in range(len(length_bytes)):
+            query_msg.append(length_bytes[i])
+        for i in range(len(sql_bytes)):
+            query_msg.append(sql_bytes[i])
+
+        self._send_bytes(query_msg)
+
+        # Step 2: Wait for CopyInResponse ('G')
+        var resp = self._read_message()
+        var msg_type = Int(resp[0])
+
+        if msg_type != MSG_COPY_IN_RESPONSE:
+            # Check for error
+            if msg_type == ord('E'):
+                var error_msg = self._parse_error_message(resp)
+                raise Error("COPY failed: " + error_msg)
+            raise Error("Expected CopyInResponse ('G'), got: " + chr(msg_type))
+
+        # Step 3: Send data
+        if use_binary:
+            # Binary format
+            # Send header
+            var header = build_copy_header_binary()
+            var header_msg = build_copy_data_message(header)
+            self._send_bytes(header_msg)
+
+            # Send rows
+            for i in range(len(rows)):
+                var row = rows[i]
+                # Convert string values to binary (for now, just use text format)
+                # TODO: Use proper binary encoding based on column types
+                var null_flags = List[Bool]()
+                var binary_values = List[List[UInt8]]()
+                for j in range(len(row)):
+                    null_flags.append(False)
+                    var val_bytes = List[UInt8]()
+                    for k in range(len(row[j])):
+                        val_bytes.append(ord(row[j][k]))
+                    binary_values.append(val_bytes)
+
+                var row_data = build_copy_row_binary(binary_values, null_flags)
+                var row_msg = build_copy_data_message(row_data)
+                self._send_bytes(row_msg)
+
+            # Send trailer
+            var trailer = build_copy_trailer_binary()
+            var trailer_msg = build_copy_data_message(trailer)
+            self._send_bytes(trailer_msg)
+        else:
+            # Text format
+            for i in range(len(rows)):
+                var row = rows[i]
+                var row_data = build_copy_row_text(row)
+                var data_msg = build_copy_data_message(row_data)
+                self._send_bytes(data_msg)
+
+        # Step 4: Send CopyDone
+        var done_msg = build_copy_done_message()
+        self._send_bytes(done_msg)
+
+        # Step 5: Wait for CommandComplete ('C') and ReadyForQuery ('Z')
+        while True:
+            var msg = self._read_message()
+            var mtype = Int(msg[0])
+
+            if mtype == ord('C'):
+                # CommandComplete
+                continue
+            elif mtype == ord('Z'):
+                # ReadyForQuery - done!
+                break
+            elif mtype == ord('E'):
+                # Error
+                var error_msg = self._parse_error_message(msg)
+                raise Error("COPY failed: " + error_msg)
+            else:
+                # Unexpected message
+                raise Error("Unexpected message during COPY: " + chr(mtype))
+
     fn close(inout self):
         """Close the connection gracefully."""
         if self.socket_fd >= 0:
