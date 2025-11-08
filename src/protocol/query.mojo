@@ -14,6 +14,7 @@ Reference: https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-F
 from collections import List
 from .connection import to_network_bytes_int32, from_network_bytes_int32, from_network_bytes_int16, extract_cstring
 from ..types.temporal import Timestamp, TimestampTZ, Date, Time
+from ..types.numeric_jsonb import Numeric, JsonValue
 
 
 # ============================================================================
@@ -692,6 +693,70 @@ struct QueryResult:
 
         var value_str = self.get_value(row_idx, col_idx)
         return decode_time(value_str)
+
+    # ========================================================================
+    # Typed Accessors - Financial & JSON Types
+    # ========================================================================
+
+    fn get_numeric(self, row_idx: Int, col_idx: Int) raises -> Numeric:
+        """
+        Get field value as NUMERIC (arbitrary precision decimal).
+
+        NUMERIC provides exact decimal arithmetic, critical for financial calculations
+        where floating point errors are unacceptable.
+
+        Args:
+            row_idx: Row index
+            col_idx: Column index
+
+        Returns:
+            Numeric value preserving exact precision
+
+        Raises:
+            Error if field is NULL or cannot be decoded as NUMERIC
+
+        Example:
+            var result = conn.query("SELECT balance FROM accounts WHERE id = 1")
+            var balance = result.get_numeric(0, 0)
+            print("Balance: ", balance.to_string())
+        """
+        from ..types.numeric_jsonb import decode_numeric
+
+        if self.is_null(row_idx, col_idx):
+            raise Error("Cannot get NUMERIC from NULL field")
+
+        var value_str = self.get_value(row_idx, col_idx)
+        return decode_numeric(value_str)
+
+    fn get_jsonb(self, row_idx: Int, col_idx: Int) raises -> JsonValue:
+        """
+        Get field value as JSONB (JSON binary storage).
+
+        JSONB provides flexible schema-less storage for metadata, configurations,
+        and semi-structured data.
+
+        Args:
+            row_idx: Row index
+            col_idx: Column index
+
+        Returns:
+            JsonValue for accessing JSON fields
+
+        Raises:
+            Error if field is NULL or cannot be decoded as JSONB
+
+        Example:
+            var result = conn.query("SELECT metadata FROM trades WHERE id = 1")
+            var metadata = result.get_jsonb(0, 0)
+            var exchange = metadata.get_string("exchange")
+        """
+        from ..types.numeric_jsonb import decode_jsonb
+
+        if self.is_null(row_idx, col_idx):
+            raise Error("Cannot get JSONB from NULL field")
+
+        var value_str = self.get_value(row_idx, col_idx)
+        return decode_jsonb(value_str)
 
 
 # ============================================================================

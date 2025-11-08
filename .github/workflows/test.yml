@@ -1,0 +1,235 @@
+name: Tests and Benchmarks
+
+on:
+  push:
+    branches: [ main, develop, 'claude/**' ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  POSTGRES_USER: test
+  POSTGRES_PASSWORD: test
+  POSTGRES_DB: test
+
+jobs:
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Mojo
+        uses: modular/setup-mojo@v1
+        with:
+          mojo-version: 'latest'
+
+      - name: Run unit tests - Connection
+        run: mojo tests/unit/test_connection.mojo
+
+      - name: Run unit tests - Authentication
+        run: mojo tests/unit/test_authentication.mojo
+
+      - name: Run unit tests - Query Protocol
+        run: mojo tests/unit/test_query_protocol.mojo
+
+      - name: Run unit tests - Numeric Types
+        run: mojo tests/unit/test_numeric_types.mojo
+
+      - name: Run unit tests - Text Types
+        run: mojo tests/unit/test_text_types.mojo
+
+      - name: Run unit tests - Temporal Types
+        run: mojo tests/unit/test_temporal_types.mojo
+
+      - name: Run unit tests - NUMERIC and JSONB Types
+        run: mojo tests/unit/test_numeric_jsonb_types.mojo
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Mojo
+        uses: modular/setup-mojo@v1
+        with:
+          mojo-version: 'latest'
+
+      - name: Wait for PostgreSQL
+        run: |
+          until pg_isready -h localhost -p 5432 -U test; do
+            echo "Waiting for PostgreSQL..."
+            sleep 2
+          done
+
+      - name: Run integration tests - Connection
+        run: mojo tests/integration/test_connection.mojo
+
+      - name: Run integration tests - Queries
+        run: mojo tests/integration/test_queries.mojo
+
+      - name: Run integration tests - Numeric Types
+        run: mojo tests/integration/test_numeric_types.mojo
+
+      - name: Run integration tests - Text Types
+        run: mojo tests/integration/test_text_types.mojo
+
+      - name: Run integration tests - Temporal Types
+        run: mojo tests/integration/test_temporal_types.mojo
+
+      - name: Run integration tests - NUMERIC and JSONB Types
+        run: mojo tests/integration/test_numeric_jsonb_types.mojo
+
+  benchmarks:
+    name: Benchmarks
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Mojo
+        uses: modular/setup-mojo@v1
+        with:
+          mojo-version: 'latest'
+
+      - name: Wait for PostgreSQL
+        run: |
+          until pg_isready -h localhost -p 5432 -U test; do
+            echo "Waiting for PostgreSQL..."
+            sleep 2
+          done
+
+      - name: Run benchmarks - Connection
+        run: mojo benchmarks/bench_connection.mojo
+
+      - name: Run benchmarks - Authentication
+        run: mojo benchmarks/bench_authentication.mojo
+
+      - name: Run benchmarks - Queries
+        run: mojo benchmarks/bench_queries.mojo
+
+      - name: Run benchmarks - Numeric Types
+        run: mojo benchmarks/bench_numeric_types.mojo
+
+      - name: Run benchmarks - Text Types
+        run: mojo benchmarks/bench_text_types.mojo
+
+      - name: Run benchmarks - Temporal Types
+        run: mojo benchmarks/bench_temporal_types.mojo
+
+      - name: Run benchmarks - NUMERIC and JSONB Types
+        run: mojo benchmarks/bench_numeric_jsonb_types.mojo
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: |
+            benchmarks/**/*.txt
+            benchmarks/**/*.json
+          retention-days: 30
+
+  code-quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check file structure
+        run: |
+          echo "Checking project structure..."
+          test -d src/protocol || (echo "Missing src/protocol" && exit 1)
+          test -d src/types || (echo "Missing src/types" && exit 1)
+          test -d tests/unit || (echo "Missing tests/unit" && exit 1)
+          test -d tests/integration || (echo "Missing tests/integration" && exit 1)
+          test -d benchmarks || (echo "Missing benchmarks" && exit 1)
+          test -d examples || (echo "Missing examples" && exit 1)
+          echo "✓ Project structure OK"
+
+      - name: Check documentation
+        run: |
+          echo "Checking documentation..."
+          test -f README.md || (echo "Missing README.md" && exit 1)
+          test -f ARCHITECTURE.md || (echo "Missing ARCHITECTURE.md" && exit 1)
+          test -f TYPE_SYSTEM.md || (echo "Missing TYPE_SYSTEM.md" && exit 1)
+          test -f CONTRIBUTING.md || (echo "Missing CONTRIBUTING.md" && exit 1)
+          echo "✓ Documentation OK"
+
+      - name: Count lines of code
+        run: |
+          echo "Counting lines of code..."
+          echo "Implementation:"
+          find src -name "*.mojo" | xargs wc -l | tail -1
+          echo "Tests:"
+          find tests -name "*.mojo" | xargs wc -l | tail -1
+          echo "Benchmarks:"
+          find benchmarks -name "*.mojo" | xargs wc -l | tail -1
+          echo "Examples:"
+          find examples -name "*.mojo" | xargs wc -l | tail -1
+
+  docker-test:
+    name: Docker Compose Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Start PostgreSQL with Docker Compose
+        run: docker-compose up -d postgres
+
+      - name: Wait for PostgreSQL
+        run: |
+          until docker-compose exec -T postgres pg_isready -U test; do
+            echo "Waiting for PostgreSQL..."
+            sleep 2
+          done
+
+      - name: Verify PostgreSQL connection
+        run: |
+          docker-compose exec -T postgres psql -U test -d test -c "SELECT version();"
+
+      - name: Check initialization
+        run: |
+          docker-compose exec -T postgres psql -U test -d test -c "SELECT * FROM test_connection;"
+
+      - name: Stop Docker Compose
+        run: docker-compose down -v
