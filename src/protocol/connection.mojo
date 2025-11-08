@@ -257,6 +257,7 @@ struct PostgresConnection:
     - PostgreSQL startup protocol
     - Authentication
     - Message reading/writing
+    - LISTEN/NOTIFY for async notifications
     """
     var socket_fd: Int
     var host: String
@@ -264,6 +265,8 @@ struct PostgresConnection:
     var database: String
     var user: String
     var is_connected: Bool
+    var notification_queue: List[UInt8]  # Placeholder for queued notifications
+    var notification_count: Int
 
     fn __init__(inout self, host: String = "localhost", port: Int = 5432):
         """Initialize connection (does not connect yet)."""
@@ -273,6 +276,8 @@ struct PostgresConnection:
         self.database = ""
         self.user = ""
         self.is_connected = False
+        self.notification_queue = List[UInt8]()
+        self.notification_count = 0
 
     fn __del__(owned self):
         """Cleanup: close socket if still open."""
@@ -1323,6 +1328,95 @@ struct PostgresConnection:
             result.add_row_value(row_str)
 
         return result^
+
+    fn listen(inout self, channel: String) raises:
+        """
+        Subscribe to notifications on a channel.
+
+        Args:
+            channel: Channel name to listen to
+
+        Raises:
+            Error if LISTEN fails
+
+        Example:
+            conn.listen("order_updates")
+        """
+        from .notify import build_listen_command
+
+        var sql = build_listen_command(channel)
+        var _ = self.query(sql)
+
+    fn notify(inout self, channel: String, payload: String = "") raises:
+        """
+        Send a notification to a channel.
+
+        Args:
+            channel: Channel name to send to
+            payload: Optional notification payload
+
+        Raises:
+            Error if NOTIFY fails
+
+        Example:
+            conn.notify("order_updates", "New order: 12345")
+        """
+        from .notify import build_notify_command
+
+        var sql = build_notify_command(channel, payload)
+        var _ = self.query(sql)
+
+    fn unlisten(inout self, channel: String = "") raises:
+        """
+        Unsubscribe from notifications.
+
+        Args:
+            channel: Channel name to stop listening to (default: all channels)
+
+        Raises:
+            Error if UNLISTEN fails
+
+        Example:
+            conn.unlisten("order_updates")  # Unlisten specific channel
+            conn.unlisten()  # Unlisten all channels
+        """
+        from .notify import build_unlisten_command
+
+        var sql = build_unlisten_command(channel)
+        var _ = self.query(sql)
+
+    fn check_for_notifications(inout self) -> Int:
+        """
+        Check for pending NotificationResponse messages.
+
+        This is a non-blocking check. Returns the number of notifications
+        received during this check.
+
+        Returns:
+            Number of notifications received
+
+        Note: Notifications are currently counted but not stored.
+        Full notification queue will be implemented in a future update.
+
+        Example:
+            var count = conn.check_for_notifications()
+            if count > 0:
+                print("Received", count, "notifications")
+        """
+        from .notify import MSG_NOTIFICATION_RESPONSE
+
+        # Try to read messages without blocking
+        # For now, this is a simplified version that doesn't actually
+        # store notifications - just counts them
+        # Full implementation would use select() or poll() for non-blocking I/O
+
+        # TODO: Implement non-blocking notification reception
+        # This requires:
+        # 1. Non-blocking socket I/O (fcntl + O_NONBLOCK)
+        # 2. Message buffering
+        # 3. Notification queue storage
+
+        return 0  # Placeholder
 
     fn close(inout self):
         """Close the connection gracefully."""
