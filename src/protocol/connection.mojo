@@ -705,6 +705,208 @@ struct PostgresConnection:
 
         return result^
 
+    # ========================================================================
+    # Extended Query Protocol (Parse/Bind/Execute)
+    # ========================================================================
+
+    fn prepare(inout self, query: String) raises -> PreparedStatement:
+        """
+        Prepare a SQL statement with parameter placeholders ($1, $2, etc.).
+
+        The Extended Query Protocol provides:
+        - 5-10x performance improvement for repeated queries
+        - Parameter binding (SQL injection prevention)
+        - Better query plan caching
+
+        Args:
+            query: SQL query with placeholders ($1, $2, etc.)
+
+        Returns:
+            PreparedStatement that can be executed multiple times
+
+        Raises:
+            Error if preparation fails
+
+        Example:
+            var stmt = conn.prepare("SELECT * FROM users WHERE id = $1 AND active = $2")
+            var result = conn.execute_prepared(stmt, ["123", "true"])
+        """
+        from .extended_query import build_parse_message, build_sync_message, count_parameters, generate_statement_name, PreparedStatement, is_parse_complete
+
+        if not self.is_connected:
+            raise Error("Not connected to database")
+
+        # Generate unique statement name
+        var statement_name = generate_statement_name()
+
+        # Count parameters in query
+        var param_count = count_parameters(query)
+
+        # Build Parse message (no parameter type hints = auto-detect)
+        var parse_msg = build_parse_message(statement_name, query)
+
+        # Build Sync message
+        var sync_msg = build_sync_message()
+
+        # Send Parse + Sync
+        self._send_bytes(parse_msg)
+        self._send_bytes(sync_msg)
+
+        # Wait for ParseComplete ('1') or Error ('E')
+        var got_parse_complete = False
+
+        while True:
+            var msg = self._receive_message()
+            var msg_type = chr(Int(msg[0]))
+
+            if msg_type == '1':
+                # ParseComplete
+                got_parse_complete = True
+
+            elif msg_type == 'Z':
+                # ReadyForQuery - done
+                break
+
+            elif msg_type == 'E':
+                # ErrorResponse - parse failed
+                var error = self._parse_error_response(msg)
+                raise Error("Failed to prepare statement: " + error.message)
+
+            elif msg_type == 'n':
+                # NoData - statement has no result columns (e.g., INSERT/UPDATE)
+                continue
+
+            elif msg_type == 'N':
+                # NoticeResponse - informational, ignore
+                continue
+
+            elif msg_type == 'S':
+                # ParameterStatus - ignore
+                continue
+
+            else:
+                # Unexpected message
+                raise Error("Unexpected message type during prepare: " + msg_type)
+
+        if not got_parse_complete:
+            raise Error("Statement preparation did not complete properly")
+
+        return PreparedStatement(statement_name, query, param_count)
+
+    fn execute_prepared(
+        inout self,
+        stmt: PreparedStatement,
+        params: List[String]
+    ) raises -> QueryResult:
+        """
+        Execute a prepared statement with parameter values.
+
+        Args:
+            stmt: Prepared statement from prepare()
+            params: Parameter values (must match parameter count)
+
+        Returns:
+            QueryResult with rows and metadata
+
+        Raises:
+            Error if execution fails or parameter count mismatches
+
+        Example:
+            var stmt = conn.prepare("SELECT * FROM users WHERE id = $1")
+            var result = conn.execute_prepared(stmt, ["123"])
+        """
+        from .extended_query import build_bind_message, build_execute_message, build_sync_message, is_bind_complete
+
+        if not self.is_connected:
+            raise Error("Not connected to database")
+
+        # Validate parameter count
+        if len(params) != stmt.param_count:
+            raise Error(
+                "Parameter count mismatch: expected " +
+                String(stmt.param_count) + ", got " + String(len(params))
+            )
+
+        # Build Bind message (unnamed portal, text format for now)
+        var bind_msg = build_bind_message("", stmt.statement_name, params)
+
+        # Build Execute message (unnamed portal, unlimited rows)
+        var execute_msg = build_execute_message("", 0)
+
+        # Build Sync message
+        var sync_msg = build_sync_message()
+
+        # Send Bind + Execute + Sync in pipeline
+        self._send_bytes(bind_msg)
+        self._send_bytes(execute_msg)
+        self._send_bytes(sync_msg)
+
+        # Initialize result
+        var result = QueryResult()
+
+        # Process response messages
+        var got_bind_complete = False
+        var got_command_complete = False
+
+        while True:
+            var msg = self._receive_message()
+            var msg_type = chr(Int(msg[0]))
+
+            if msg_type == '2':
+                # BindComplete
+                got_bind_complete = True
+
+            elif msg_type == 'T':
+                # RowDescription - column metadata
+                var row_desc = parse_row_description(msg)
+                for i in range(row_desc.field_count):
+                    result.columns.append(row_desc.fields[i])
+
+            elif msg_type == 'D':
+                # DataRow - one row of data
+                var data_row = parse_data_row(msg)
+                result.rows.append(data_row)
+
+            elif msg_type == 'C':
+                # CommandComplete - execution finished
+                var cmd = parse_command_complete(msg)
+                result.command_tag = cmd.tag
+                result.rows_affected = cmd.rows_affected
+                got_command_complete = True
+
+            elif msg_type == 'Z':
+                # ReadyForQuery - all done
+                break
+
+            elif msg_type == 'E':
+                # ErrorResponse - execution failed
+                var error = self._parse_error_response(msg)
+                raise Error("Execute error: " + error.message)
+
+            elif msg_type == 'n':
+                # NoData - no result columns
+                continue
+
+            elif msg_type == 'N':
+                # NoticeResponse - informational, ignore
+                continue
+
+            elif msg_type == 'S':
+                # ParameterStatus - ignore
+                continue
+
+            else:
+                # Unexpected message
+                raise Error("Unexpected message type during execute: " + msg_type)
+
+        if not got_bind_complete:
+            raise Error("Bind did not complete properly")
+
+        if not got_command_complete:
+            raise Error("Execute did not complete properly")
+
+        return result^
+
     fn close(inout self):
         """Close the connection gracefully."""
         if self.socket_fd >= 0:
