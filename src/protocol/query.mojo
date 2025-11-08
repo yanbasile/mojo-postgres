@@ -15,6 +15,7 @@ from collections import List
 from .connection import to_network_bytes_int32, from_network_bytes_int32, from_network_bytes_int16, extract_cstring
 from ..types.temporal import Timestamp, TimestampTZ, Date, Time
 from ..types.numeric_jsonb import Numeric, JsonValue
+from ..types.array_types import Int2Array, Int4Array, Int8Array, Float4Array, Float8Array, TextArray, BoolArray
 
 
 # ============================================================================
@@ -757,6 +758,175 @@ struct QueryResult:
 
         var value_str = self.get_value(row_idx, col_idx)
         return decode_jsonb(value_str)
+
+    # ========================================================================
+    # Typed Accessors - Array Types
+    # ========================================================================
+
+    fn get_int2_array(self, row_idx: Int, col_idx: Int) raises -> owned Int2Array:
+        """
+        Get field value as INT2[] (SMALLINT[]) array.
+
+        Args:
+            row_idx: Row index
+            col_idx: Column index
+
+        Returns:
+            Int2Array
+
+        Raises:
+            Error if field is NULL or cannot be decoded
+
+        Example:
+            var result = conn.query("SELECT ARRAY[1,2,3]::INT2[]")
+            var arr = result.get_int2_array(0, 0)
+            print(arr.to_string())  # [1, 2, 3]
+        """
+        from ..types.array_types import parse_int2_array
+
+        if self.is_null(row_idx, col_idx):
+            raise Error("Cannot get INT2[] from NULL field")
+
+        var value_str = self.get_value(row_idx, col_idx)
+        return parse_int2_array(value_str)
+
+    fn get_int4_array(self, row_idx: Int, col_idx: Int) raises -> owned Int4Array:
+        """
+        Get field value as INT4[] (INTEGER[]) array.
+
+        Args:
+            row_idx: Row index
+            col_idx: Column index
+
+        Returns:
+            Int4Array
+
+        Example:
+            var result = conn.query("SELECT ARRAY[100,200,300]::INT4[]")
+            var arr = result.get_int4_array(0, 0)
+        """
+        from ..types.array_types import parse_int4_array
+
+        if self.is_null(row_idx, col_idx):
+            raise Error("Cannot get INT4[] from NULL field")
+
+        var value_str = self.get_value(row_idx, col_idx)
+        return parse_int4_array(value_str)
+
+    fn get_int8_array(self, row_idx: Int, col_idx: Int) raises -> owned Int8Array:
+        """
+        Get field value as INT8[] (BIGINT[]) array.
+
+        Args:
+            row_idx: Row index
+            col_idx: Column index
+
+        Returns:
+            Int8Array
+
+        Example:
+            var result = conn.query("SELECT ARRAY[1000000000,2000000000]::INT8[]")
+            var arr = result.get_int8_array(0, 0)
+        """
+        from ..types.array_types import parse_int8_array
+
+        if self.is_null(row_idx, col_idx):
+            raise Error("Cannot get INT8[] from NULL field")
+
+        var value_str = self.get_value(row_idx, col_idx)
+        return parse_int8_array(value_str)
+
+    fn get_float4_array(self, row_idx: Int, col_idx: Int) raises -> owned Float4Array:
+        """
+        Get field value as FLOAT4[] (REAL[]) array.
+
+        Args:
+            row_idx: Row index
+            col_idx: Column index
+
+        Returns:
+            Float4Array
+
+        Example:
+            var result = conn.query("SELECT ARRAY[1.1,2.2,3.3]::FLOAT4[]")
+            var arr = result.get_float4_array(0, 0)
+        """
+        from ..types.array_types import parse_float4_array
+
+        if self.is_null(row_idx, col_idx):
+            raise Error("Cannot get FLOAT4[] from NULL field")
+
+        var value_str = self.get_value(row_idx, col_idx)
+        return parse_float4_array(value_str)
+
+    fn get_float8_array(self, row_idx: Int, col_idx: Int) raises -> owned Float8Array:
+        """
+        Get field value as FLOAT8[] (DOUBLE PRECISION[]) array.
+
+        Args:
+            row_idx: Row index
+            col_idx: Column index
+
+        Returns:
+            Float8Array
+
+        Example:
+            var result = conn.query("SELECT ARRAY[3.14,2.71,1.41]::FLOAT8[]")
+            var arr = result.get_float8_array(0, 0)
+        """
+        from ..types.array_types import parse_float8_array
+
+        if self.is_null(row_idx, col_idx):
+            raise Error("Cannot get FLOAT8[] from NULL field")
+
+        var value_str = self.get_value(row_idx, col_idx)
+        return parse_float8_array(value_str)
+
+    fn get_text_array(self, row_idx: Int, col_idx: Int) raises -> owned TextArray:
+        """
+        Get field value as TEXT[] array.
+
+        Args:
+            row_idx: Row index
+            col_idx: Column index
+
+        Returns:
+            TextArray
+
+        Example:
+            var result = conn.query("SELECT ARRAY['hello','world']::TEXT[]")
+            var arr = result.get_text_array(0, 0)
+        """
+        from ..types.array_types import parse_text_array
+
+        if self.is_null(row_idx, col_idx):
+            raise Error("Cannot get TEXT[] from NULL field")
+
+        var value_str = self.get_value(row_idx, col_idx)
+        return parse_text_array(value_str)
+
+    fn get_bool_array(self, row_idx: Int, col_idx: Int) raises -> owned BoolArray:
+        """
+        Get field value as BOOLEAN[] array.
+
+        Args:
+            row_idx: Row index
+            col_idx: Column index
+
+        Returns:
+            BoolArray
+
+        Example:
+            var result = conn.query("SELECT ARRAY[true,false,true]::BOOLEAN[]")
+            var arr = result.get_bool_array(0, 0)
+        """
+        from ..types.array_types import parse_bool_array
+
+        if self.is_null(row_idx, col_idx):
+            raise Error("Cannot get BOOLEAN[] from NULL field")
+
+        var value_str = self.get_value(row_idx, col_idx)
+        return parse_bool_array(value_str)
 
 
 # ============================================================================
