@@ -76,8 +76,8 @@
 - ✅ Benchmark guide
 - ✅ Usage examples (connection + query)
 
-#### Type Decoders (COMPLETE)
-- ✅ **Task 1.3**: Numeric type decoders (NEW - just completed)
+#### Type Decoders (IN PROGRESS - 8/15 types done)
+- ✅ **Task 1.3**: Numeric type decoders
   - INT2 (SMALLINT) decoder
   - INT4 (INTEGER) decoder
   - INT8 (BIGINT) decoder
@@ -88,14 +88,26 @@
   - Overflow detection
   - Special value support (Infinity, NaN)
 
+- ✅ **Task 1.4**: Text and boolean type decoders (NEW - just completed)
+  - BOOLEAN decoder (t/f, true/false, yes/no, on/off, 1/0)
+  - TEXT decoder (Unicode support, passthrough)
+  - VARCHAR decoder (consistent API)
+  - CHAR decoder (with/without trimming)
+  - QueryResult typed accessors (get_bool, get_text, get_varchar)
+  - NULL handling in typed accessors
+  - Case-insensitive boolean matching
+  - String validation helpers
+
 #### Testing (EXPANDED)
 - ✅ Unit tests for connection (28 tests)
 - ✅ Unit tests for authentication (12 tests)
 - ✅ Unit tests for query protocol (12 tests)
-- ✅ Unit tests for numeric types (27+ tests) - NEW
+- ✅ Unit tests for numeric types (27+ tests)
+- ✅ Unit tests for text/boolean types (25+ tests) - NEW
 - ✅ Integration tests for connection (5 tests)
 - ✅ Integration tests for queries (8 tests)
-- ✅ Integration tests for numeric types (16+ tests) - NEW
+- ✅ Integration tests for numeric types (16+ tests)
+- ✅ Integration tests for text/boolean types (14+ tests) - NEW
 - ✅ Docker setup scripts
 - ✅ Ubuntu integration guide
 
@@ -104,7 +116,8 @@
 - ✅ MD5 authentication benchmarks
 - ✅ Query execution benchmarks (6 types)
 - ✅ Bulk operations benchmarks (4 types)
-- ✅ Numeric type decoding benchmarks (10 suites) - NEW
+- ✅ Numeric type decoding benchmarks (10 suites)
+- ✅ Text/boolean type decoding benchmarks (8 suites) - NEW
 - ✅ Python baseline comparisons
 - ✅ Memory usage analysis
 - ✅ Socket throughput (placeholder)
@@ -115,21 +128,22 @@
 - ✅ Contributing guide
 - ✅ Task 1.1 summary
 - ✅ Task 1.2 summary
-- ✅ Task 1.3 summary - NEW
+- ✅ Task 1.3 summary
+- ✅ Task 1.4 summary - NEW
 - ✅ Socket implementation guide
 - ✅ Testing guide
 - ✅ Benchmark guide
-- ✅ Usage examples (connection + query + numeric types)
+- ✅ Usage examples (connection + query + numeric types + text/boolean types)
 
 #### Code Statistics (Current)
 ```
-Implementation:      1,787 lines  (connection + auth + query + numeric types)
-Tests:               2,279 lines  (unit + integration)
-Benchmarks:          2,331 lines  (Mojo + Python baselines)
-Examples:              822 lines  (connection + query + numeric types)
-Documentation:       2,500+ lines  (guides + summaries)
+Implementation:      2,177 lines  (connection + auth + query + numeric + text/boolean)
+Tests:               3,255 lines  (unit + integration)
+Benchmarks:          3,135 lines  (Mojo + Python baselines)
+Examples:            1,245 lines  (connection + query + numeric + text/boolean)
+Documentation:       3,500+ lines  (guides + summaries)
 ────────────────────────────────────────────────────
-Total:              ~9,700 lines
+Total:              ~13,300 lines
 ```
 
 ---
@@ -162,18 +176,28 @@ Delivered:
 Total: ~2,166 lines
 ```
 
-**Priority 2: Text & Boolean** (Week 2) - NEXT UP
+**Priority 2: Text & Boolean** ✅ COMPLETE (Task 1.4)
 ```
-Task 1.4: Text and Boolean Types
-├─ #13 TEXT decoder (already works as-is, add validation)
-├─ #17 VARCHAR decoder
-├─ #15 BOOLEAN decoder (t/f -> Bool)
-└─ Add String encoding helpers
+Task 1.4: Text and Boolean Types ✅ COMPLETE
+├─ ✅ BOOLEAN decoder (t/f, true/false, yes/no, on/off, 1/0)
+├─ ✅ TEXT decoder (Unicode support)
+├─ ✅ VARCHAR decoder (consistent API)
+└─ ✅ CHAR decoder (with/without trimming)
 
-Effort: ~200 lines implementation + 150 lines tests
+Delivered:
+  - src/types/text.mojo (320 lines - all decoders + helpers)
+  - src/protocol/query.mojo (added typed accessors)
+  - tests/unit/test_text_types.mojo (423 lines - 25+ tests)
+  - tests/integration/test_text_types.mojo (553 lines - 14+ tests)
+  - benchmarks/bench_text_types.mojo (418 lines - 8 suites)
+  - benchmarks/baseline/bench_text_types.py (386 lines)
+  - examples/text_types.mojo (423 lines - 7 examples)
+  - TASK_1.4_SUMMARY.md (comprehensive documentation)
+
+Total: ~2,593 lines
 ```
 
-**Priority 3: Temporal Types** (Week 3)
+**Priority 3: Temporal Types** (Week 3) - NEXT UP
 ```
 Task 1.5: Temporal Types
 ├─ #14 TIMESTAMPTZ decoder ⚠️ CRITICAL for TimescaleDB
@@ -423,14 +447,14 @@ Expected performance:
 **Phase 1 (v0.1.0) Success Criteria**:
 - ✅ Connect to PostgreSQL (DONE)
 - ✅ Execute queries (DONE)
-- ⏳ Decode 15 core types (5 done: INT2, INT4, INT8, FLOAT4, FLOAT8)
+- ⏳ Decode 15 core types (8 done: INT2, INT4, INT8, FLOAT4, FLOAT8, BOOLEAN, TEXT, VARCHAR)
 - ⏳ 80%+ test coverage (increasing with each type)
 - ⏳ CI/CD pipeline
-- ⏳ Performance: 4-10x faster than psycopg2 (proven for queries and numeric decoding)
+- ⏳ Performance: 2-5x faster than psycopg2 (proven for queries and numeric decoding)
 
-**Current Status**: **70% Complete** (Protocol done, 5/15 types done)
+**Current Status**: **75% Complete** (Protocol done, 8/15 types done)
 
-**Remaining Effort**: ~2-3 weeks for Phase 1 completion
+**Remaining Effort**: ~2 weeks for Phase 1 completion
 
 ---
 
@@ -480,6 +504,6 @@ These 4 type groups enable the cryptocurrency trading use case!
 
 ---
 
-**Last Updated**: 2024-11-08
-**Current Phase**: Phase 1 (60% complete)
-**Next Milestone**: Task 1.3 - Numeric Type Decoders
+**Last Updated**: 2025-11-08
+**Current Phase**: Phase 1 (75% complete)
+**Next Milestone**: Task 1.5 - Temporal Type Decoders
