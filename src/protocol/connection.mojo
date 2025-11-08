@@ -619,6 +619,92 @@ struct PostgresConnection:
 
         return error
 
+    fn query(self, sql: String) raises -> owned QueryResult:
+        """
+        Execute a Simple Query and return results.
+
+        This implements the Simple Query protocol which:
+        1. Sends Query message (Q)
+        2. Receives RowDescription (T) - column metadata
+        3. Receives DataRow messages (D) - one per row
+        4. Receives CommandComplete (C) - completion status
+        5. Receives ReadyForQuery (Z) - ready for next query
+
+        Args:
+            sql: SQL query string (e.g., "SELECT * FROM users")
+
+        Returns:
+            QueryResult with columns, rows, and command info
+
+        Raises:
+            Error on query errors or connection issues
+        """
+        from .query import build_query_message, parse_row_description, parse_data_row
+        from .query import parse_command_complete, QueryResult, FieldDescription
+
+        if not self.is_connected:
+            raise Error("Not connected to PostgreSQL")
+
+        # Build and send Query message
+        var query_msg = build_query_message(sql)
+        self._send_bytes(query_msg)
+
+        # Initialize result
+        var result = QueryResult()
+
+        # Process response messages
+        var got_row_description = False
+        var got_command_complete = False
+
+        while True:
+            var msg = self._receive_message()
+            var msg_type = chr(Int(msg[0]))
+
+            if msg_type == 'T':
+                # RowDescription - column metadata
+                var row_desc = parse_row_description(msg)
+                for i in range(row_desc.field_count):
+                    result.columns.append(row_desc.fields[i])
+                got_row_description = True
+
+            elif msg_type == 'D':
+                # DataRow - one row of data
+                var data_row = parse_data_row(msg)
+                result.rows.append(data_row)
+
+            elif msg_type == 'C':
+                # CommandComplete - query finished
+                var cmd = parse_command_complete(msg)
+                result.command_tag = cmd.tag
+                result.rows_affected = cmd.rows_affected
+                got_command_complete = True
+
+            elif msg_type == 'Z':
+                # ReadyForQuery - all done
+                break
+
+            elif msg_type == 'E':
+                # ErrorResponse - query failed
+                var error = self._parse_error_response(msg)
+                raise Error("Query error: " + error.message)
+
+            elif msg_type == 'N':
+                # NoticeResponse - informational, ignore for now
+                continue
+
+            elif msg_type == 'S':
+                # ParameterStatus - ignore
+                continue
+
+            else:
+                # Unexpected message
+                raise Error("Unexpected message type during query: " + msg_type)
+
+        if not got_command_complete:
+            raise Error("Query did not complete properly")
+
+        return result^
+
     fn close(inout self):
         """Close the connection gracefully."""
         if self.socket_fd >= 0:
