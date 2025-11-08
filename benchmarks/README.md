@@ -15,12 +15,58 @@ Our goal is to achieve **10x performance improvement** over psycopg2 for most op
 
 ## Available Benchmarks
 
-### Task 1.1 Benchmarks (Connection & Auth)
+### Phase 1 Benchmarks (Connection & Auth)
 
 - **bench_connection.mojo** - Connection establishment time (TCP + auth + ready)
 - **bench_auth.mojo** - MD5 password hashing overhead
 - **bench_socket_throughput.mojo** - Raw socket I/O throughput
 - **bench_memory.mojo** - Memory usage per connection
+
+### Phase 2 Benchmarks (Data Types & Queries)
+
+- **bench_query.mojo** - Basic query performance
+- **bench_bulk_ops.mojo** - Bulk insert and COPY protocol
+- **bench_numeric_types.mojo** - Numeric type conversions
+- **bench_text_types.mojo** - Text type handling
+- **bench_temporal_types.mojo** - Date/time operations
+- **bench_numeric_jsonb_types.mojo** - NUMERIC and JSONB performance
+
+### Phase 4A Benchmarks (Production Features) ⭐ NEW!
+
+- **bench_prepared_statements.mojo** - Prepared statement performance
+  - Single vs repeated execution
+  - Parameter binding overhead
+  - Statement caching
+  - INSERT performance (1000 rows)
+
+- **bench_connection_pool.mojo** - Connection pool performance
+  - Pool initialization
+  - Connection acquisition/release
+  - Reuse vs new connection
+  - Sequential workload (100 queries)
+
+- **bench_transactions.mojo** - Transaction performance
+  - Simple transactions (BEGIN/COMMIT)
+  - Rollback operations
+  - Savepoints
+  - Isolation levels
+  - Multi-operation transactions
+
+- **bench_overhead.mojo** - Logging & metrics overhead
+  - Logging operations (all levels)
+  - Metrics collection (counter, gauge, histogram)
+  - Timer operations
+  - Prometheus export
+  - Total overhead on queries
+
+- **bench_scenarios.mojo** - Real-world scenarios
+  - E-commerce order processing
+  - Banking transfers (ACID)
+  - User session management
+  - API CRUD operations
+  - Analytics batch insert
+
+- **run_all_benchmarks.mojo** - Run all benchmarks and generate report
 
 ### Python Baselines
 
@@ -220,6 +266,78 @@ For tracking performance over time, consider:
 
 (Infrastructure for this coming in Phase 2)
 
+## Running Phase 4A Benchmarks
+
+The Phase 4A benchmarks test production-ready features added in mojo-postgres:
+
+### Quick Start
+
+```bash
+# Run comprehensive suite (all benchmarks + report)
+mojo benchmarks/run_all_benchmarks.mojo
+
+# Run individual benchmark categories
+mojo benchmarks/bench_prepared_statements.mojo
+mojo benchmarks/bench_connection_pool.mojo
+mojo benchmarks/bench_transactions.mojo
+mojo benchmarks/bench_overhead.mojo
+mojo benchmarks/bench_scenarios.mojo
+```
+
+### Expected Results
+
+**Prepared Statements:**
+- 5-10x faster for repeated queries
+- <1μs parameter binding overhead
+- 10-20x faster for batch inserts
+
+**Connection Pool:**
+- ~100x faster than creating new connections
+- <1ms acquisition time
+- <10% overhead vs direct connection
+
+**Transactions:**
+- <1ms transaction overhead
+- <500μs savepoint overhead
+- <20% overhead for SERIALIZABLE isolation
+
+**Logging & Metrics:**
+- <10μs per log message
+- <1μs per counter increment
+- <5μs per histogram observation
+- <5% total overhead on queries
+
+**Real-World Scenarios:**
+- E-commerce: 100-500 orders/sec
+- Banking: 100-500 transfers/sec
+- User sessions: 200-1000 logins/sec
+- API CRUD: 500-2000 ops/sec
+- Analytics: 1000-5000 events/sec
+
+### Interpreting Results
+
+Each benchmark outputs:
+- **Mean**: Average performance (typical case)
+- **P95**: 95th percentile (good for SLA planning)
+- **P99**: 99th percentile (worst case scenarios)
+- **Throughput**: Operations per second
+
+Look for:
+- ✅ **Consistent mean/median**: Predictable performance
+- ✅ **Low P95/P99**: Few outliers
+- ✅ **High throughput**: Good scalability
+- ⚠️ **High variance**: May indicate system issues
+
+## Benchmark Comparison
+
+| Feature | Without | With | Improvement |
+|---------|---------|------|-------------|
+| Repeated queries | Simple query | Prepared stmt | 5-10x faster |
+| Connection reuse | New connection | Pool | 100x faster |
+| Batch inserts | Simple INSERT | Prepared | 10-20x faster |
+| Observability | None | Logging+Metrics | <5% overhead |
+| Data integrity | Manual | Transactions | Same speed |
+
 ## Contributing
 
 When adding new features:
@@ -233,3 +351,4 @@ When adding new features:
 - [PostgreSQL Performance Tips](https://www.postgresql.org/docs/current/performance-tips.html)
 - [Mojo Performance Guide](https://docs.modular.com/mojo/manual/performance/)
 - [psycopg2 Performance](https://www.psycopg.org/docs/usage.html#optimization)
+- [mojo-postgres Phase 4A Plan](../docs/PHASE_4A_PLAN.md)
