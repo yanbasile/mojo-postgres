@@ -13,6 +13,7 @@ Reference: https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-F
 
 from collections import List
 from .connection import to_network_bytes_int32, from_network_bytes_int32, from_network_bytes_int16, extract_cstring
+from ..types.temporal import Timestamp, TimestampTZ, Date, Time
 
 
 # ============================================================================
@@ -578,6 +579,119 @@ struct QueryResult:
 
         var value_str = self.get_value(row_idx, col_idx)
         return decode_varchar(value_str)
+
+    # ========================================================================
+    # Typed Accessors - Temporal Types
+    # ========================================================================
+
+    fn get_timestamp(self, row_idx: Int, col_idx: Int) raises -> owned Timestamp:
+        """
+        Get field value as TIMESTAMP (without timezone).
+
+        Args:
+            row_idx: Row index
+            col_idx: Column index
+
+        Returns:
+            Timestamp structure
+
+        Raises:
+            Error if field is NULL or cannot be decoded as TIMESTAMP
+
+        Example:
+            var result = conn.query("SELECT created_at FROM events")
+            var ts = result.get_timestamp(0, 0)
+            print(ts.year, "-", ts.month, "-", ts.day)
+        """
+        from ..types.temporal import decode_timestamp
+
+        if self.is_null(row_idx, col_idx):
+            raise Error("Cannot get TIMESTAMP from NULL field")
+
+        var value_str = self.get_value(row_idx, col_idx)
+        return decode_timestamp(value_str)
+
+    fn get_timestamptz(self, row_idx: Int, col_idx: Int) raises -> owned TimestampTZ:
+        """
+        Get field value as TIMESTAMPTZ (with timezone).
+
+        Args:
+            row_idx: Row index
+            col_idx: Column index
+
+        Returns:
+            TimestampTZ structure
+
+        Raises:
+            Error if field is NULL or cannot be decoded as TIMESTAMPTZ
+
+        Example:
+            var result = conn.query("SELECT recorded_at FROM sensor_data")
+            var tstz = result.get_timestamptz(0, 0)
+            print(tstz.year, "-", tstz.month, "-", tstz.day, " ", tstz.hour, ":", tstz.minute)
+            print("Timezone offset:", tstz.timezone_offset_seconds, "seconds")
+        """
+        from ..types.temporal import decode_timestamptz
+
+        if self.is_null(row_idx, col_idx):
+            raise Error("Cannot get TIMESTAMPTZ from NULL field")
+
+        var value_str = self.get_value(row_idx, col_idx)
+        return decode_timestamptz(value_str)
+
+    fn get_date(self, row_idx: Int, col_idx: Int) raises -> owned Date:
+        """
+        Get field value as DATE.
+
+        Args:
+            row_idx: Row index
+            col_idx: Column index
+
+        Returns:
+            Date structure
+
+        Raises:
+            Error if field is NULL or cannot be decoded as DATE
+
+        Example:
+            var result = conn.query("SELECT birth_date FROM users")
+            var date = result.get_date(0, 0)
+            print(date.year, "-", date.month, "-", date.day)
+        """
+        from ..types.temporal import decode_date
+
+        if self.is_null(row_idx, col_idx):
+            raise Error("Cannot get DATE from NULL field")
+
+        var value_str = self.get_value(row_idx, col_idx)
+        return decode_date(value_str)
+
+    fn get_time(self, row_idx: Int, col_idx: Int) raises -> owned Time:
+        """
+        Get field value as TIME (without timezone).
+
+        Args:
+            row_idx: Row index
+            col_idx: Column index
+
+        Returns:
+            Time structure
+
+        Raises:
+            Error if field is NULL or cannot be decoded as TIME
+
+        Example:
+            var result = conn.query("SELECT opening_time FROM stores")
+            var time = result.get_time(0, 0)
+            print(time.hour, ":", time.minute, ":", time.second)
+        """
+        from ..types.temporal import decode_time
+
+        if self.is_null(row_idx, col_idx):
+            raise Error("Cannot get TIME from NULL field")
+
+        var value_str = self.get_value(row_idx, col_idx)
+        return decode_time(value_str)
 
 
 # ============================================================================
