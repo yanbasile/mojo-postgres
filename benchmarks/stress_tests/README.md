@@ -4,18 +4,20 @@ Comprehensive stress testing framework for validating mojo-postgres performance,
 
 ## Overview
 
-This suite implements 10+ stress test categories designed to validate production-readiness:
+This suite implements 7 comprehensive stress test categories designed to validate production-readiness:
 
-1. **Connection Limits** - 1000+ concurrent connections
-2. **Memory Pressure** - 24-hour leak detection
-3. **Long-Running Stability** - 7-day continuous operation
-4. **Concurrent Workloads** - Mixed read/write operations
-5. **Failure Scenarios** - Chaos engineering
-6. **Resource Exhaustion** - CPU, memory, file descriptors
-7. **Data Volume** - 1B+ row ingestion
-8. **Query Complexity** - Complex analytical queries
-9. **TimescaleDB Stress** - 10K+ chunk handling
-10. **Security Under Load** - Connection attacks, SQL injection
+1. ✅ **Connection Limits** - 1000+ concurrent connections
+2. ✅ **Memory Pressure** - 24-hour leak detection
+3. ✅ **Long-Running Stability** - 7-day continuous operation
+4. ✅ **Concurrent Workloads** - Mixed read/write with lock contention
+5. ✅ **Failure Scenarios** - Chaos engineering (network failures, timeouts)
+6. ✅ **Resource Exhaustion** - CPU, memory, file descriptor limits
+7. ✅ **Data Volume** - 10M+ row bulk ingestion and queries
+
+**Additional tests (future):**
+8. Query Complexity - Complex analytical queries
+9. TimescaleDB Stress - 10K+ chunk handling
+10. Security Under Load - Connection attacks, SQL injection
 
 ## Quick Start
 
@@ -118,6 +120,78 @@ python run_stress_tests.py --all --quick
 - File descriptor leaks
 - Throughput consistency
 - Resource exhaustion
+
+### Test 4: Concurrent Workloads
+**Duration:** 30 minutes (2 hours in full mode)
+**Purpose:** Validate mixed concurrent read/write operations with lock contention
+
+**Success Criteria:**
+- ✅ Throughput > 10K ops/sec with 100 workers
+- ✅ Error rate < 5% (deadlocks allowed)
+- ✅ p99 latency < 200ms
+- ✅ Deadlock rate < 1%
+- ✅ Data integrity maintained
+
+**What it tests:**
+- Concurrent read/write operations (70/20/10 mix)
+- Lock contention on hot rows
+- Deadlock detection and recovery
+- Transaction isolation
+- Multi-threaded correctness
+
+### Test 5: Failure Scenarios
+**Duration:** 30 minutes (60 minutes in full mode)
+**Purpose:** Chaos engineering - validate resilience under failures
+
+**Success Criteria:**
+- ✅ Success rate > 80% during failures
+- ✅ All failures recovered automatically
+- ✅ No data corruption
+- ✅ Recovery time < 30 seconds
+- ✅ Retry mechanisms work
+
+**What it tests:**
+- Network latency injection (2-5s delays)
+- Slow queries (30s+ queries)
+- Transaction timeouts
+- Connection drops
+- Automatic retry with exponential backoff
+
+### Test 6: Resource Exhaustion
+**Duration:** ~15 minutes
+**Purpose:** Test system behavior at resource limits
+
+**Success Criteria:**
+- ✅ No crashes at resource limits
+- ✅ Graceful error handling
+- ✅ Opened 100+ connections
+- ✅ Handled 100K+ row result sets
+- ✅ System remains responsive
+
+**What it tests:**
+- File descriptor exhaustion (open connections until limit)
+- Memory pressure (large result sets)
+- CPU saturation (complex queries)
+- Connection pool exhaustion
+- Resource cleanup after pressure
+
+### Test 7: Data Volume
+**Duration:** ~20 minutes
+**Purpose:** Validate bulk ingestion and query performance with large datasets
+
+**Success Criteria:**
+- ✅ Bulk INSERT > 50K rows/sec
+- ✅ COPY command > 100K rows/sec
+- ✅ Ingested 1M+ rows successfully
+- ✅ Average query time < 5 seconds
+- ✅ All test phases complete
+
+**What it tests:**
+- Bulk INSERT (execute_values)
+- COPY command (fastest ingestion)
+- Query performance on large tables (millions of rows)
+- Index usage and performance
+- Cleanup of large datasets
 
 ## Test Results
 

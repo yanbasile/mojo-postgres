@@ -24,6 +24,10 @@ from stress_test_framework import StressTestSuite
 from test_01_connection_limits import ConnectionLimitsTest
 from test_02_memory_pressure import MemoryPressureTest
 from test_03_long_running import LongRunningStabilityTest
+from test_04_concurrent_workloads import ConcurrentWorkloadsTest
+from test_05_failure_scenarios import FailureScenariosTest
+from test_06_resource_exhaustion import ResourceExhaustionTest
+from test_07_data_volume import DataVolumeStressTest
 
 
 def parse_args():
@@ -108,6 +112,30 @@ def create_suite(args):
             "name": "Long-Running Stability",
             "quick_params": {"duration_days": 0.042},  # ~1 hour
             "full_params": {"duration_days": 7.0}
+        },
+        4: {
+            "class": ConcurrentWorkloadsTest,
+            "name": "Concurrent Workloads (Mixed Read/Write)",
+            "quick_params": {"duration_minutes": 30},
+            "full_params": {"duration_minutes": 120}
+        },
+        5: {
+            "class": FailureScenariosTest,
+            "name": "Failure Scenarios (Chaos Engineering)",
+            "quick_params": {"duration_minutes": 30},
+            "full_params": {"duration_minutes": 60}
+        },
+        6: {
+            "class": ResourceExhaustionTest,
+            "name": "Resource Exhaustion (FD/Memory/CPU)",
+            "quick_params": {},
+            "full_params": {}
+        },
+        7: {
+            "class": DataVolumeStressTest,
+            "name": "Data Volume (Bulk Ingestion)",
+            "quick_params": {"target_rows": 1_000_000},
+            "full_params": {"target_rows": 10_000_000}
         }
     }
 
