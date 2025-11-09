@@ -1,6 +1,6 @@
 # Real-World Use Cases for mojo-postgres
 
-This document presents 10 real-world use cases across multiple industries where mojo-postgres excels, with a focus on high-frequency time-series data and performance-critical applications.
+This document presents 12 real-world use cases across multiple industries where mojo-postgres excels, with a focus on high-frequency time-series data and performance-critical applications.
 
 ## Table of Contents
 
@@ -12,8 +12,10 @@ This document presents 10 real-world use cases across multiple industries where 
 6. [Real-Time Gaming Analytics](#6-real-time-gaming-analytics)
 7. [E-Commerce Clickstream Analysis](#7-e-commerce-clickstream-analysis)
 8. [Smart City Traffic Management](#8-smart-city-traffic-management)
-9. [Healthcare Patient Monitoring](#9-healthcare-patient-monitoring)
+9. [Deep Learning Experiment Tracking](#9-deep-learning-experiment-tracking)
 10. [DevOps Metrics & Logs](#10-devops-metrics--logs)
+11. [LLM Training & Fine-Tuning](#11-llm-training--fine-tuning)
+12. [LLM Inference & RAG Systems](#12-llm-inference--rag-systems)
 
 ---
 
@@ -552,46 +554,173 @@ SELECT create_hypertable('traffic_data', 'time',
 
 ---
 
-## 9. Healthcare Patient Monitoring
+## 9. Deep Learning Experiment Tracking
 
 ### Domain
-Hospital ICU monitoring vital signs from 1,000 beds with medical devices.
+ML Platform tracking experiments, hyperparameters, and metrics for distributed deep learning training across 1,000+ GPUs.
+
+### Problem Statement
+Track millions of training experiments for computer vision, NLP, and multimodal models. Store hyperparameters, training metrics (loss, accuracy, perplexity), validation results, and model checkpoints metadata. Enable fast experiment comparison and automatic hyperparameter optimization.
 
 ### Data Volume
-- **Devices/bed**: 5 (ECG, BP, SpO2, etc.)
-- **Readings/sec**: 50 per device
-- **Total**: 250,000 readings/sec
+- **Concurrent Experiments**: 10,000
+- **Metrics/sec**: 500,000 (100 metrics per experiment every 200ms)
+- **Daily Volume**: ~43B metrics/day
+- **Experiment Duration**: Minutes to weeks
+- **Data Retention**: Indefinite (research archive)
 
 ### Schema
 ```sql
-CREATE TABLE vitals (
-    time            TIMESTAMPTZ NOT NULL,
-    patient_id      INT NOT NULL,
-    device_id       TEXT NOT NULL,
-    metric_name     TEXT NOT NULL,  -- 'heart_rate', 'blood_pressure', 'spo2', etc.
-    value           NUMERIC(10,4),
-    unit            TEXT,
-    alert_triggered BOOLEAN
+CREATE TABLE experiments (
+    experiment_id       TEXT PRIMARY KEY,
+    user_id             TEXT NOT NULL,
+    project_name        TEXT NOT NULL,
+    model_architecture  TEXT NOT NULL,
+    created_at          TIMESTAMPTZ NOT NULL,
+    status              TEXT NOT NULL,  -- 'running', 'completed', 'failed'
+    hyperparameters     JSONB NOT NULL,
+    git_commit          TEXT,
+    dataset_version     TEXT
 );
 
-SELECT create_hypertable('vitals', 'time',
-    chunk_time_interval => INTERVAL '1 hour');
+CREATE TABLE training_metrics (
+    time                TIMESTAMPTZ NOT NULL,
+    experiment_id       TEXT NOT NULL,
+    epoch               INT,
+    step                BIGINT NOT NULL,
+    metric_name         TEXT NOT NULL,  -- 'loss', 'accuracy', 'perplexity', 'throughput'
+    metric_value        NUMERIC(18,8),
+    phase               TEXT,           -- 'train', 'val', 'test'
+    gpu_id              INT
+);
+
+SELECT create_hypertable('training_metrics', 'time',
+    chunk_time_interval => INTERVAL '6 hours');
+
+CREATE INDEX ON training_metrics (experiment_id, time DESC);
+CREATE INDEX ON training_metrics (metric_name, time DESC);
+
+-- Enable compression after 7 days
+ALTER TABLE training_metrics SET (
+    timescaledb.compress,
+    timescaledb.compress_segmentby = 'experiment_id,metric_name',
+    timescaledb.compress_orderby = 'time DESC'
+);
+
+-- Continuous aggregate for experiment summaries
+CREATE MATERIALIZED VIEW experiment_summary
+WITH (timescaledb.continuous) AS
+SELECT
+    time_bucket('5 minutes', time) AS bucket,
+    experiment_id,
+    metric_name,
+    AVG(metric_value) AS avg_value,
+    MIN(metric_value) AS min_value,
+    MAX(metric_value) AS max_value,
+    STDDEV(metric_value) AS stddev_value
+FROM training_metrics
+GROUP BY bucket, experiment_id, metric_name;
+
+CREATE TABLE model_checkpoints (
+    time                TIMESTAMPTZ NOT NULL,
+    experiment_id       TEXT NOT NULL,
+    checkpoint_id       TEXT PRIMARY KEY,
+    epoch               INT,
+    step                BIGINT,
+    metrics             JSONB,          -- Best metrics at checkpoint
+    model_size_bytes    BIGINT,
+    storage_path        TEXT,
+    is_best             BOOLEAN
+);
+
+SELECT create_hypertable('model_checkpoints', 'time',
+    chunk_time_interval => INTERVAL '1 day');
 ```
 
 ### Critical Queries
-1. **Real-time alerting** (sub-second)
-2. **Trend analysis**
-3. **Anomaly detection**
+
+1. **Real-time training monitoring** (sub-100ms)
+   ```sql
+   SELECT
+       time,
+       metric_name,
+       metric_value,
+       step
+   FROM training_metrics
+   WHERE experiment_id = 'exp_123'
+     AND time > NOW() - INTERVAL '5 minutes'
+   ORDER BY time DESC;
+   ```
+
+2. **Best experiment search** (sub-1s across 100K experiments)
+   ```sql
+   WITH best_val_loss AS (
+       SELECT
+           experiment_id,
+           MIN(metric_value) AS best_loss
+       FROM training_metrics
+       WHERE metric_name = 'val_loss'
+         AND phase = 'val'
+         AND time > NOW() - INTERVAL '7 days'
+       GROUP BY experiment_id
+   )
+   SELECT
+       e.experiment_id,
+       e.model_architecture,
+       e.hyperparameters,
+       b.best_loss
+   FROM experiments e
+   JOIN best_val_loss b ON e.experiment_id = b.experiment_id
+   WHERE e.project_name = 'vision_transformer'
+   ORDER BY b.best_loss ASC
+   LIMIT 10;
+   ```
+
+3. **Hyperparameter correlation analysis** (sub-5s)
+   ```sql
+   SELECT
+       e.hyperparameters->>'learning_rate' AS lr,
+       e.hyperparameters->>'batch_size' AS bs,
+       AVG(m.metric_value) AS avg_final_accuracy
+   FROM experiments e
+   JOIN training_metrics m ON e.experiment_id = m.experiment_id
+   WHERE m.metric_name = 'accuracy'
+     AND m.phase = 'val'
+     AND m.epoch = (
+         SELECT MAX(epoch)
+         FROM training_metrics
+         WHERE experiment_id = e.experiment_id
+     )
+   GROUP BY lr, bs
+   ORDER BY avg_final_accuracy DESC;
+   ```
+
+4. **GPU utilization tracking** (real-time)
+   ```sql
+   SELECT
+       gpu_id,
+       COUNT(DISTINCT experiment_id) AS active_experiments,
+       AVG(metric_value) FILTER (WHERE metric_name = 'gpu_memory_used') AS avg_memory,
+       AVG(metric_value) FILTER (WHERE metric_name = 'throughput') AS avg_throughput
+   FROM training_metrics
+   WHERE time > NOW() - INTERVAL '1 minute'
+   GROUP BY gpu_id;
+   ```
 
 ### Performance Requirements
-- **Ingestion**: 250K readings/sec
-- **Alerts**: <500ms detection
-- **Dashboards**: <1s refresh
+- **Ingestion**: 500K metrics/sec during peak training
+- **Dashboard queries**: <100ms for active experiments
+- **Experiment search**: <1s across 100K+ experiments
+- **Hyperparameter analysis**: <5s for correlation studies
+- **Compression**: 10-20x for old experiment data
 
 ### Why mojo-postgres?
-- ✅ Sub-second alert detection with triggers
-- ✅ Reliable data storage (ACID compliance)
-- ✅ Fast trend queries with continuous aggregates
+- ✅ High-throughput metric ingestion (500K/sec)
+- ✅ Fast JSONB queries for hyperparameter search
+- ✅ Continuous aggregates for dashboard performance
+- ✅ Efficient compression for long-term experiment archive
+- ✅ Sub-100ms queries for real-time training monitoring
+- ✅ ACID transactions for checkpoint consistency
 
 ---
 
@@ -649,20 +778,496 @@ SELECT create_hypertable('logs', 'time',
 
 ---
 
+## 11. LLM Training & Fine-Tuning
+
+### Domain
+Large Language Model training platform tracking pre-training and fine-tuning runs for models from 1B to 100B+ parameters across distributed GPU clusters.
+
+### Problem Statement
+Track LLM training runs with billions of parameters across thousands of GPUs. Monitor training metrics (loss, perplexity, throughput), checkpoint metadata, data pipeline statistics, and resource utilization. Enable fast comparison of training configurations and automatic detection of training instabilities.
+
+### Data Volume
+- **Concurrent Training Runs**: 500 (pre-training + fine-tuning)
+- **Metrics/sec**: 1,000,000 (distributed across GPUs)
+- **Daily Volume**: ~86B metrics/day
+- **Training Duration**: Weeks to months for pre-training
+- **Data Retention**: Permanent (research + compliance)
+
+### Schema
+```sql
+CREATE TABLE llm_training_runs (
+    run_id              TEXT PRIMARY KEY,
+    model_name          TEXT NOT NULL,
+    model_size          TEXT NOT NULL,       -- '7B', '13B', '70B', etc.
+    training_type       TEXT NOT NULL,       -- 'pretraining', 'fine-tuning', 'rlhf'
+    started_at          TIMESTAMPTZ NOT NULL,
+    status              TEXT NOT NULL,       -- 'running', 'paused', 'completed', 'failed'
+    config              JSONB NOT NULL,      -- All hyperparameters
+    num_gpus            INT,
+    total_tokens        BIGINT,
+    dataset_name        TEXT,
+    base_model          TEXT                 -- For fine-tuning
+);
+
+CREATE TABLE llm_training_metrics (
+    time                TIMESTAMPTZ NOT NULL,
+    run_id              TEXT NOT NULL,
+    global_step         BIGINT NOT NULL,
+    tokens_processed    BIGINT,
+
+    -- Loss metrics
+    loss                NUMERIC(18,8),
+    grad_norm           NUMERIC(18,8),
+
+    -- LLM-specific metrics
+    perplexity          NUMERIC(18,8),
+    token_accuracy      NUMERIC(8,6),
+
+    -- Performance metrics
+    throughput_tps      NUMERIC(18,2),      -- Tokens per second
+    mfu_percent         NUMERIC(8,4),       -- Model FLOPs Utilization
+
+    -- Resource metrics
+    gpu_id              INT,
+    gpu_memory_used_gb  NUMERIC(10,2),
+    gpu_utilization     NUMERIC(5,2),
+
+    -- Optimizer state
+    learning_rate       NUMERIC(12,10),
+
+    phase               TEXT                 -- 'train', 'eval'
+);
+
+SELECT create_hypertable('llm_training_metrics', 'time',
+    chunk_time_interval => INTERVAL '12 hours');
+
+CREATE INDEX ON llm_training_metrics (run_id, time DESC);
+CREATE INDEX ON llm_training_metrics (run_id, global_step DESC);
+
+-- Enable compression after 3 days
+ALTER TABLE llm_training_metrics SET (
+    timescaledb.compress,
+    timescaledb.compress_segmentby = 'run_id,gpu_id',
+    timescaledb.compress_orderby = 'time DESC'
+);
+
+-- Continuous aggregate for training progress
+CREATE MATERIALIZED VIEW llm_training_progress
+WITH (timescaledb.continuous) AS
+SELECT
+    time_bucket('10 minutes', time) AS bucket,
+    run_id,
+    AVG(loss) AS avg_loss,
+    MIN(loss) AS min_loss,
+    AVG(perplexity) AS avg_perplexity,
+    AVG(throughput_tps) AS avg_throughput,
+    AVG(mfu_percent) AS avg_mfu,
+    MAX(tokens_processed) AS total_tokens
+FROM llm_training_metrics
+WHERE phase = 'train'
+GROUP BY bucket, run_id;
+
+CREATE TABLE llm_checkpoints (
+    time                TIMESTAMPTZ NOT NULL,
+    run_id              TEXT NOT NULL,
+    checkpoint_id       TEXT PRIMARY KEY,
+    global_step         BIGINT,
+    tokens_processed    BIGINT,
+
+    -- Checkpoint metrics
+    train_loss          NUMERIC(18,8),
+    eval_loss           NUMERIC(18,8),
+    eval_perplexity     NUMERIC(18,8),
+
+    -- Storage
+    checkpoint_size_gb  NUMERIC(12,2),
+    storage_path        TEXT,
+
+    -- Evaluation benchmarks
+    benchmark_scores    JSONB,              -- MMLU, HellaSwag, etc.
+
+    is_best             BOOLEAN,
+    is_published        BOOLEAN
+);
+
+SELECT create_hypertable('llm_checkpoints', 'time',
+    chunk_time_interval => INTERVAL '7 days');
+
+CREATE TABLE training_instabilities (
+    time                TIMESTAMPTZ NOT NULL,
+    run_id              TEXT NOT NULL,
+    global_step         BIGINT,
+    instability_type    TEXT NOT NULL,      -- 'nan_loss', 'grad_explosion', 'throughput_drop'
+    severity            TEXT NOT NULL,      -- 'warning', 'critical'
+    details             JSONB,
+    auto_recovered      BOOLEAN
+);
+
+SELECT create_hypertable('training_instabilities', 'time',
+    chunk_time_interval => INTERVAL '1 month');
+```
+
+### Critical Queries
+
+1. **Real-time training dashboard** (sub-100ms)
+   ```sql
+   SELECT
+       time,
+       loss,
+       perplexity,
+       throughput_tps,
+       mfu_percent,
+       tokens_processed
+   FROM llm_training_metrics
+   WHERE run_id = 'llama3-70b-pretrain'
+     AND time > NOW() - INTERVAL '10 minutes'
+     AND phase = 'train'
+   ORDER BY time DESC
+   LIMIT 1000;
+   ```
+
+2. **Training stability analysis** (sub-1s)
+   ```sql
+   WITH recent_metrics AS (
+       SELECT
+           time_bucket('1 minute', time) AS bucket,
+           AVG(loss) AS avg_loss,
+           STDDEV(loss) AS stddev_loss,
+           AVG(grad_norm) AS avg_grad_norm,
+           MAX(grad_norm) AS max_grad_norm
+       FROM llm_training_metrics
+       WHERE run_id = 'llama3-70b-pretrain'
+         AND time > NOW() - INTERVAL '1 hour'
+       GROUP BY bucket
+   )
+   SELECT
+       bucket,
+       avg_loss,
+       stddev_loss,
+       CASE
+           WHEN avg_loss != avg_loss THEN 'NAN_DETECTED'
+           WHEN stddev_loss > avg_loss * 0.5 THEN 'HIGH_VARIANCE'
+           WHEN max_grad_norm > 1.0 THEN 'GRAD_EXPLOSION'
+           ELSE 'STABLE'
+       END AS stability_status
+   FROM recent_metrics
+   ORDER BY bucket DESC;
+   ```
+
+3. **Throughput optimization** (sub-500ms)
+   ```sql
+   SELECT
+       r.config->>'batch_size' AS batch_size,
+       r.config->>'gradient_accumulation_steps' AS grad_accum,
+       r.config->>'sequence_length' AS seq_len,
+       AVG(m.throughput_tps) AS avg_throughput,
+       AVG(m.mfu_percent) AS avg_mfu
+   FROM llm_training_runs r
+   JOIN llm_training_metrics m ON r.run_id = m.run_id
+   WHERE r.model_size = '70B'
+     AND m.time > NOW() - INTERVAL '1 day'
+     AND m.phase = 'train'
+   GROUP BY batch_size, grad_accum, seq_len
+   ORDER BY avg_throughput DESC
+   LIMIT 20;
+   ```
+
+4. **Checkpoint comparison** (sub-1s)
+   ```sql
+   SELECT
+       checkpoint_id,
+       global_step,
+       tokens_processed,
+       eval_loss,
+       eval_perplexity,
+       benchmark_scores->>'mmlu' AS mmlu_score,
+       benchmark_scores->>'hellaswag' AS hellaswag_score,
+       checkpoint_size_gb
+   FROM llm_checkpoints
+   WHERE run_id = 'llama3-70b-pretrain'
+     AND eval_loss IS NOT NULL
+   ORDER BY eval_loss ASC
+   LIMIT 10;
+   ```
+
+### Performance Requirements
+- **Ingestion**: 1M metrics/sec across distributed training
+- **Dashboard updates**: <100ms for real-time monitoring
+- **Stability detection**: <1s for instability alerts
+- **Checkpoint queries**: <1s for best model selection
+- **Compression**: 15-20x for old training runs
+
+### Why mojo-postgres?
+- ✅ 1M metrics/sec ingestion for distributed training
+- ✅ Sub-100ms queries for real-time loss monitoring
+- ✅ Fast JSONB queries for hyperparameter optimization
+- ✅ Continuous aggregates for training progress dashboards
+- ✅ Efficient storage of multi-month training runs
+- ✅ ACID compliance for checkpoint metadata integrity
+
+---
+
+## 12. LLM Inference & RAG Systems
+
+### Domain
+Production LLM inference platform serving 1M+ requests/day with Retrieval-Augmented Generation (RAG), prompt caching, and token usage tracking.
+
+### Problem Statement
+Track all LLM inference requests including prompts, completions, retrieved context, token usage, latency, and costs. Enable prompt optimization, RAG performance analysis, user behavior tracking, and cost attribution. Support A/B testing of different prompts and model configurations.
+
+### Data Volume
+- **Requests/sec**: 1,000-10,000 (peak during business hours)
+- **Daily Volume**: ~50M requests/day
+- **Average tokens/request**: 2,000 (prompt + completion)
+- **RAG retrievals**: 3-10 documents per request
+- **Data Retention**: 90 days hot, 1 year compressed
+
+### Schema
+```sql
+CREATE TABLE llm_requests (
+    time                TIMESTAMPTZ NOT NULL,
+    request_id          TEXT PRIMARY KEY,
+    user_id             TEXT NOT NULL,
+    session_id          TEXT,
+
+    -- Model info
+    model_name          TEXT NOT NULL,      -- 'gpt-4', 'claude-3', 'llama-70b', etc.
+    model_version       TEXT,
+
+    -- Request details
+    prompt_template     TEXT,               -- Template name/ID
+    prompt_tokens       INT,
+    completion_tokens   INT,
+    total_tokens        INT,
+
+    -- RAG details
+    rag_enabled         BOOLEAN,
+    num_retrieved_docs  INT,
+    retrieval_latency_ms INT,
+
+    -- Performance
+    total_latency_ms    INT,
+    ttft_ms             INT,               -- Time to first token
+    tokens_per_second   NUMERIC(10,2),
+
+    -- Response
+    finish_reason       TEXT,              -- 'stop', 'length', 'content_filter'
+    status_code         INT,
+
+    -- Cost & attribution
+    cost_usd            NUMERIC(10,6),
+    department          TEXT,
+    application         TEXT,
+
+    -- Quality
+    user_rating         INT,               -- 1-5 if provided
+    regenerated         BOOLEAN
+);
+
+SELECT create_hypertable('llm_requests', 'time',
+    chunk_time_interval => INTERVAL '1 day');
+
+CREATE INDEX ON llm_requests (user_id, time DESC);
+CREATE INDEX ON llm_requests (model_name, time DESC);
+CREATE INDEX ON llm_requests (application, time DESC);
+
+-- Enable compression after 7 days
+ALTER TABLE llm_requests SET (
+    timescaledb.compress,
+    timescaledb.compress_segmentby = 'model_name,application',
+    timescaledb.compress_orderby = 'time DESC'
+);
+
+CREATE TABLE rag_retrievals (
+    time                TIMESTAMPTZ NOT NULL,
+    request_id          TEXT NOT NULL,
+    document_id         TEXT NOT NULL,
+    rank                INT,                -- 1 for top result
+    relevance_score     NUMERIC(6,4),
+    chunk_text          TEXT,               -- Retrieved text chunk
+    metadata            JSONB,
+    used_in_context     BOOLEAN             -- Was it actually used?
+);
+
+SELECT create_hypertable('rag_retrievals', 'time',
+    chunk_time_interval => INTERVAL '1 day');
+
+-- Continuous aggregate for usage analytics
+CREATE MATERIALIZED VIEW llm_usage_hourly
+WITH (timescaledb.continuous) AS
+SELECT
+    time_bucket('1 hour', time) AS bucket,
+    model_name,
+    application,
+    COUNT(*) AS num_requests,
+    SUM(total_tokens) AS total_tokens,
+    SUM(cost_usd) AS total_cost,
+    AVG(total_latency_ms) AS avg_latency,
+    percentile_cont(0.95) WITHIN GROUP (ORDER BY total_latency_ms) AS p95_latency,
+    AVG(tokens_per_second) AS avg_throughput
+FROM llm_requests
+GROUP BY bucket, model_name, application;
+
+CREATE TABLE prompt_experiments (
+    experiment_id       TEXT PRIMARY KEY,
+    prompt_template_a   TEXT NOT NULL,
+    prompt_template_b   TEXT NOT NULL,
+    model_name          TEXT NOT NULL,
+    started_at          TIMESTAMPTZ NOT NULL,
+    ended_at            TIMESTAMPTZ,
+    status              TEXT,
+
+    -- Results
+    variant_a_requests  INT,
+    variant_b_requests  INT,
+    variant_a_avg_rating NUMERIC(3,2),
+    variant_b_avg_rating NUMERIC(3,2),
+    winner              TEXT                -- 'A', 'B', or 'no_difference'
+);
+
+CREATE TABLE token_cache_hits (
+    time                TIMESTAMPTZ NOT NULL,
+    model_name          TEXT NOT NULL,
+    cache_key_hash      TEXT NOT NULL,
+    hit                 BOOLEAN,
+    tokens_saved        INT,
+    latency_saved_ms    INT
+);
+
+SELECT create_hypertable('token_cache_hits', 'time',
+    chunk_time_interval => INTERVAL '6 hours');
+```
+
+### Critical Queries
+
+1. **Real-time usage dashboard** (sub-100ms)
+   ```sql
+   SELECT
+       COUNT(*) AS requests,
+       SUM(total_tokens) AS tokens,
+       SUM(cost_usd) AS cost,
+       AVG(total_latency_ms) AS avg_latency
+   FROM llm_requests
+   WHERE time > NOW() - INTERVAL '5 minutes'
+   GROUP BY time_bucket('1 minute', time)
+   ORDER BY time_bucket DESC;
+   ```
+
+2. **Cost attribution** (sub-1s)
+   ```sql
+   SELECT
+       department,
+       application,
+       model_name,
+       COUNT(*) AS num_requests,
+       SUM(total_tokens) AS total_tokens,
+       SUM(cost_usd) AS total_cost,
+       AVG(user_rating) AS avg_rating
+   FROM llm_requests
+   WHERE time > NOW() - INTERVAL '24 hours'
+   GROUP BY department, application, model_name
+   ORDER BY total_cost DESC;
+   ```
+
+3. **RAG performance analysis** (sub-2s)
+   ```sql
+   WITH rag_metrics AS (
+       SELECT
+           r.request_id,
+           r.total_latency_ms,
+           r.retrieval_latency_ms,
+           r.user_rating,
+           COUNT(rv.document_id) AS num_docs_retrieved,
+           AVG(rv.relevance_score) AS avg_relevance
+       FROM llm_requests r
+       JOIN rag_retrievals rv ON r.request_id = rv.request_id
+       WHERE r.time > NOW() - INTERVAL '7 days'
+         AND r.rag_enabled = true
+       GROUP BY r.request_id, r.total_latency_ms,
+                r.retrieval_latency_ms, r.user_rating
+   )
+   SELECT
+       num_docs_retrieved,
+       COUNT(*) AS num_requests,
+       AVG(retrieval_latency_ms) AS avg_retrieval_latency,
+       AVG(total_latency_ms) AS avg_total_latency,
+       AVG(user_rating) AS avg_rating
+   FROM rag_metrics
+   GROUP BY num_docs_retrieved
+   ORDER BY num_docs_retrieved;
+   ```
+
+4. **Prompt A/B testing results** (sub-500ms)
+   ```sql
+   SELECT
+       r.prompt_template,
+       COUNT(*) AS num_requests,
+       AVG(r.user_rating) AS avg_rating,
+       AVG(r.total_latency_ms) AS avg_latency,
+       AVG(r.completion_tokens) AS avg_completion_length,
+       COUNT(*) FILTER (WHERE r.regenerated = true)::FLOAT / COUNT(*)
+           AS regeneration_rate
+   FROM llm_requests r
+   JOIN prompt_experiments e
+       ON r.prompt_template = e.prompt_template_a
+           OR r.prompt_template = e.prompt_template_b
+   WHERE e.experiment_id = 'exp_001'
+     AND r.time BETWEEN e.started_at AND COALESCE(e.ended_at, NOW())
+   GROUP BY r.prompt_template;
+   ```
+
+5. **Cache effectiveness** (sub-500ms)
+   ```sql
+   SELECT
+       time_bucket('1 hour', time) AS hour,
+       model_name,
+       COUNT(*) AS total_requests,
+       COUNT(*) FILTER (WHERE hit = true) AS cache_hits,
+       (COUNT(*) FILTER (WHERE hit = true)::FLOAT / COUNT(*))
+           AS cache_hit_rate,
+       SUM(tokens_saved) AS total_tokens_saved,
+       SUM(latency_saved_ms) AS total_latency_saved_ms
+   FROM token_cache_hits
+   WHERE time > NOW() - INTERVAL '24 hours'
+   GROUP BY hour, model_name
+   ORDER BY hour DESC;
+   ```
+
+### Performance Requirements
+- **Ingestion**: 10K requests/sec peak
+- **Dashboard queries**: <100ms for real-time metrics
+- **Cost reports**: <1s for daily/weekly attribution
+- **RAG analysis**: <2s for performance correlation
+- **A/B test results**: <500ms for experiment evaluation
+- **Compression**: 10-15x for old request logs
+
+### Why mojo-postgres?
+- ✅ 10K requests/sec ingestion during peak traffic
+- ✅ Sub-100ms queries for real-time dashboards
+- ✅ Fast JSONB queries for metadata and RAG analysis
+- ✅ Continuous aggregates for usage analytics
+- ✅ Efficient text storage with compression
+- ✅ Complex JOIN performance for A/B testing
+- ✅ Cost-effective long-term retention
+
+---
+
 ## Summary Comparison
 
 | Use Case | Events/Sec | Daily Volume | Key Feature | Performance Requirement |
 |----------|-----------|--------------|-------------|------------------------|
-| **Crypto Trading** 🔷 | 15K | 500M | Sub-ms trading | <5ms ingestion |
-| **Market Data** 🔷 | 200K | 5B | VWAP/OHLCV | <50ms queries |
-| **DeFi Monitoring** 🔷 | 50K | 2B | Arbitrage detection | <100ms detection |
-| **IoT Sensors** | 100K | 8.6B | Compression | 20x compression |
-| **APM** | 1.5M | 100B | Percentiles | <500ms dashboards |
-| **Gaming** | 200K | 17B | Leaderboards | <1s updates |
-| **E-Commerce** | 1M | 86B | Funnels | <2s analytics |
-| **Traffic** | 50K | 4.3B | Prediction | <5s incident |
-| **Healthcare** | 250K | 21B | Alerting | <500ms alerts |
-| **DevOps** | 2.5M | 250B | Log search | <5s search |
+| **1. Crypto Trading** 🔷 | 15K | 500M | Sub-ms trading | <5ms ingestion |
+| **2. Market Data** 🔷 | 200K | 5B | VWAP/OHLCV | <50ms queries |
+| **3. DeFi Monitoring** 🔷 | 50K | 2B | Arbitrage detection | <100ms detection |
+| **4. IoT Sensors** | 100K | 8.6B | Compression | 20x compression |
+| **5. APM** | 1.5M | 100B | Percentiles | <500ms dashboards |
+| **6. Gaming** | 200K | 17B | Leaderboards | <1s updates |
+| **7. E-Commerce** | 1M | 86B | Funnels | <2s analytics |
+| **8. Traffic** | 50K | 4.3B | Prediction | <5s incident |
+| **9. DL Experiments** | 500K | 43B | Hyperparameter search | <100ms dashboards |
+| **10. DevOps** | 2.5M | 250B | Log search | <5s search |
+| **11. LLM Training** | 1M | 86B | Stability detection | <100ms monitoring |
+| **12. LLM Inference** | 10K | 50M requests | RAG + Cost tracking | <100ms dashboards |
 
 All use cases benefit from mojo-postgres's:
 - ✅ High-throughput ingestion (COPY protocol)
