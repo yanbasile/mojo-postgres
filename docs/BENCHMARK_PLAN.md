@@ -1,6 +1,6 @@
 # Comprehensive Benchmark Plan: Python vs Mojo
 
-This document outlines a detailed plan for benchmarking mojo-postgres against Python PostgreSQL drivers (psycopg2 and asyncpg) across 10 real-world use cases.
+This document outlines a detailed plan for benchmarking mojo-postgres against Python PostgreSQL drivers (psycopg2 and asyncpg) across 12 real-world use cases.
 
 ## Table of Contents
 
@@ -53,8 +53,10 @@ benchmarks/comparison/
 │   ├── gaming_data.py           # Gaming events generator
 │   ├── clickstream_data.py      # E-commerce clickstream generator
 │   ├── traffic_data.py          # Traffic data generator
-│   ├── vitals_data.py           # Healthcare vitals generator
-│   └── devops_data.py           # DevOps logs/metrics generator
+│   ├── dl_experiments_data.py   # Deep Learning experiment tracking generator
+│   ├── devops_data.py           # DevOps logs/metrics generator
+│   ├── llm_training_data.py     # LLM training metrics generator
+│   └── llm_inference_data.py    # LLM inference/RAG data generator
 ├── python/
 │   ├── psycopg2_impl/          # psycopg2 implementations
 │   │   ├── crypto_bench.py
@@ -228,7 +230,7 @@ class DeFiDataGenerator:
         pass
 ```
 
-### 4-10. Additional Generators
+### 4-12. Additional Generators
 
 Each use case gets a dedicated data generator with realistic patterns:
 
@@ -237,8 +239,10 @@ Each use case gets a dedicated data generator with realistic patterns:
 - **Gaming**: Player events with session correlation
 - **E-Commerce**: Clickstream with funnel patterns
 - **Traffic**: Congestion patterns (rush hour, weekends)
-- **Healthcare**: Vital signs with normal ranges and anomalies
+- **Deep Learning**: Experiment metrics with loss curves, hyperparameters, GPU utilization
 - **DevOps**: Logs with error bursts and metrics with seasonality
+- **LLM Training**: Training metrics with loss/perplexity, throughput, instabilities
+- **LLM Inference**: Request/response data with token usage, RAG retrievals, costs
 
 ### Data Volume Configuration
 
@@ -615,7 +619,7 @@ Point Lookup │    ▓▓▓     ▓▓▓▓▓▓    ▓▓▓▓▓▓▓▓
 
 **Tasks**:
 1. ✅ Create benchmark framework structure
-2. ✅ Implement data generators for all 10 use cases
+2. ✅ Implement data generators for all 12 use cases
 3. ✅ Set up 3 PostgreSQL databases (one per driver)
 4. ✅ Create schemas and hypertables
 5. ✅ Validate data generators produce realistic data
@@ -773,7 +777,7 @@ mojo-postgres/
 ## Success Criteria
 
 ✅ **Technical**:
-- All 10 use cases implemented in 3 drivers
+- All 12 use cases implemented in 3 drivers
 - Datasets generated and validated
 - Benchmarks run successfully
 - Results reproducible
