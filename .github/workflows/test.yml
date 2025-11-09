@@ -1,10 +1,44 @@
-name: Tests and Benchmarks
+# ⚠️ CI/CD Status: Currently Disabled
+#
+# This workflow is DISABLED because Mojo is not yet available on GitHub Actions.
+#
+# Reasons:
+# 1. No official modular/setup-mojo GitHub Action exists
+# 2. Mojo requires a Modular account and special installation
+# 3. Mojo is not freely available on CI/CD platforms yet
+#
+# Once Modular provides official GitHub Actions support, this workflow will be enabled.
+#
+# 📖 To run tests locally:
+#   Prerequisites:
+#     - Install Mojo 24.5+
+#     - Start PostgreSQL: docker-compose up -d
+#
+#   Unit Tests:
+#     mojo tests/unit/test_connection.mojo
+#     mojo tests/unit/test_types.mojo
+#     mojo tests/unit/test_prepared.mojo
+#
+#   Integration Tests:
+#     mojo tests/integration/test_postgres_connection.mojo
+#     mojo tests/integration/test_postgres_query.mojo
+#
+#   Benchmarks:
+#     mojo benchmarks/run_all_benchmarks.mojo
+#
+# See README.md for complete setup instructions.
+
+name: Tests and Benchmarks (Disabled)
 
 on:
-  push:
-    branches: [ main, develop, 'claude/**' ]
-  pull_request:
-    branches: [ main, develop ]
+  # Disabled - Mojo not available on GitHub Actions yet
+  # Uncomment these when Mojo GitHub Action becomes available:
+  # push:
+  #   branches: [ main, develop, 'claude/**' ]
+  # pull_request:
+  #   branches: [ main ]
+
+  workflow_dispatch:  # Manual trigger only (for testing structure checks)
 
 env:
   POSTGRES_USER: test
@@ -12,201 +46,93 @@ env:
   POSTGRES_DB: test
 
 jobs:
-  unit-tests:
-    name: Unit Tests
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Mojo
-        uses: modular/setup-mojo@v1
-        with:
-          mojo-version: 'latest'
-
-      - name: Run unit tests - Connection
-        run: mojo tests/unit/test_connection.mojo
-
-      - name: Run unit tests - Authentication
-        run: mojo tests/unit/test_authentication.mojo
-
-      - name: Run unit tests - Query Protocol
-        run: mojo tests/unit/test_query_protocol.mojo
-
-      - name: Run unit tests - Numeric Types
-        run: mojo tests/unit/test_numeric_types.mojo
-
-      - name: Run unit tests - Text Types
-        run: mojo tests/unit/test_text_types.mojo
-
-      - name: Run unit tests - Temporal Types
-        run: mojo tests/unit/test_temporal_types.mojo
-
-      - name: Run unit tests - NUMERIC and JSONB Types
-        run: mojo tests/unit/test_numeric_jsonb_types.mojo
-
-  integration-tests:
-    name: Integration Tests
-    runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-          POSTGRES_DB: test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Mojo
-        uses: modular/setup-mojo@v1
-        with:
-          mojo-version: 'latest'
-
-      - name: Wait for PostgreSQL
-        run: |
-          until pg_isready -h localhost -p 5432 -U test; do
-            echo "Waiting for PostgreSQL..."
-            sleep 2
-          done
-
-      - name: Run integration tests - Connection
-        run: mojo tests/integration/test_connection.mojo
-
-      - name: Run integration tests - Queries
-        run: mojo tests/integration/test_queries.mojo
-
-      - name: Run integration tests - Numeric Types
-        run: mojo tests/integration/test_numeric_types.mojo
-
-      - name: Run integration tests - Text Types
-        run: mojo tests/integration/test_text_types.mojo
-
-      - name: Run integration tests - Temporal Types
-        run: mojo tests/integration/test_temporal_types.mojo
-
-      - name: Run integration tests - NUMERIC and JSONB Types
-        run: mojo tests/integration/test_numeric_jsonb_types.mojo
-
-  benchmarks:
-    name: Benchmarks
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
-
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-          POSTGRES_DB: test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Mojo
-        uses: modular/setup-mojo@v1
-        with:
-          mojo-version: 'latest'
-
-      - name: Wait for PostgreSQL
-        run: |
-          until pg_isready -h localhost -p 5432 -U test; do
-            echo "Waiting for PostgreSQL..."
-            sleep 2
-          done
-
-      - name: Run benchmarks - Connection
-        run: mojo benchmarks/bench_connection.mojo
-
-      - name: Run benchmarks - Authentication
-        run: mojo benchmarks/bench_authentication.mojo
-
-      - name: Run benchmarks - Queries
-        run: mojo benchmarks/bench_queries.mojo
-
-      - name: Run benchmarks - Numeric Types
-        run: mojo benchmarks/bench_numeric_types.mojo
-
-      - name: Run benchmarks - Text Types
-        run: mojo benchmarks/bench_text_types.mojo
-
-      - name: Run benchmarks - Temporal Types
-        run: mojo benchmarks/bench_temporal_types.mojo
-
-      - name: Run benchmarks - NUMERIC and JSONB Types
-        run: mojo benchmarks/bench_numeric_jsonb_types.mojo
-
-      - name: Upload benchmark results
-        uses: actions/upload-artifact@v4
-        with:
-          name: benchmark-results
-          path: |
-            benchmarks/**/*.txt
-            benchmarks/**/*.json
-          retention-days: 30
-
+  # =========================================================================
+  # Code Quality - File Structure Checks (No Mojo Required)
+  # =========================================================================
   code-quality:
-    name: Code Quality
+    name: Code Quality - Structure Check
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Check file structure
+      - name: Check project structure
         run: |
-          echo "Checking project structure..."
-          test -d src/protocol || (echo "Missing src/protocol" && exit 1)
-          test -d src/types || (echo "Missing src/types" && exit 1)
-          test -d tests/unit || (echo "Missing tests/unit" && exit 1)
-          test -d tests/integration || (echo "Missing tests/integration" && exit 1)
-          test -d benchmarks || (echo "Missing benchmarks" && exit 1)
-          test -d examples || (echo "Missing examples" && exit 1)
-          echo "✓ Project structure OK"
+          echo "✓ Checking project structure..."
+          test -d src/protocol || (echo "❌ Missing src/protocol" && exit 1)
+          test -d src/types || (echo "❌ Missing src/types" && exit 1)
+          test -d src/pool || (echo "❌ Missing src/pool" && exit 1)
+          test -d src/resilience || (echo "❌ Missing src/resilience" && exit 1)
+          test -d src/timescaledb || (echo "❌ Missing src/timescaledb" && exit 1)
+          test -d src/logging || (echo "❌ Missing src/logging" && exit 1)
+          test -d src/metrics || (echo "❌ Missing src/metrics" && exit 1)
+          test -d src/core || (echo "❌ Missing src/core" && exit 1)
+          test -d tests/unit || (echo "❌ Missing tests/unit" && exit 1)
+          test -d tests/integration || (echo "❌ Missing tests/integration" && exit 1)
+          test -d benchmarks || (echo "❌ Missing benchmarks" && exit 1)
+          test -d examples || (echo "❌ Missing examples" && exit 1)
+          test -d docs || (echo "❌ Missing docs" && exit 1)
+          echo "✅ Project structure OK"
 
-      - name: Check documentation
+      - name: Check core documentation
         run: |
-          echo "Checking documentation..."
-          test -f README.md || (echo "Missing README.md" && exit 1)
-          test -f ARCHITECTURE.md || (echo "Missing ARCHITECTURE.md" && exit 1)
-          test -f TYPE_SYSTEM.md || (echo "Missing TYPE_SYSTEM.md" && exit 1)
-          test -f CONTRIBUTING.md || (echo "Missing CONTRIBUTING.md" && exit 1)
-          echo "✓ Documentation OK"
+          echo "✓ Checking documentation..."
+          test -f README.md || (echo "❌ Missing README.md" && exit 1)
+          test -f ROADMAP.md || (echo "❌ Missing ROADMAP.md" && exit 1)
+          test -f GETTING_STARTED.md || (echo "❌ Missing GETTING_STARTED.md" && exit 1)
+          test -f TOUR.md || (echo "❌ Missing TOUR.md" && exit 1)
+          test -f LICENSE || (echo "❌ Missing LICENSE" && exit 1)
+          test -f docker-compose.yml || (echo "❌ Missing docker-compose.yml" && exit 1)
+          test -f guided_tour.py || (echo "❌ Missing guided_tour.py" && exit 1)
+          echo "✅ Core documentation OK"
+
+      - name: Check advanced documentation
+        run: |
+          echo "✓ Checking advanced docs..."
+          test -f docs/RESILIENCE_GUIDE.md || (echo "❌ Missing docs/RESILIENCE_GUIDE.md" && exit 1)
+          test -f docs/SSL_SUPPORT.md || (echo "❌ Missing docs/SSL_SUPPORT.md" && exit 1)
+          test -f docs/ACCOMPLISHMENTS.md || (echo "❌ Missing docs/ACCOMPLISHMENTS.md" && exit 1)
+          test -f benchmarks/README.md || (echo "❌ Missing benchmarks/README.md" && exit 1)
+          test -f tests/integration/README.md || (echo "❌ Missing tests/integration/README.md" && exit 1)
+          echo "✅ Advanced documentation OK"
 
       - name: Count lines of code
         run: |
-          echo "Counting lines of code..."
-          echo "Implementation:"
-          find src -name "*.mojo" | xargs wc -l | tail -1
-          echo "Tests:"
-          find tests -name "*.mojo" | xargs wc -l | tail -1
-          echo "Benchmarks:"
-          find benchmarks -name "*.mojo" | xargs wc -l | tail -1
-          echo "Examples:"
-          find examples -name "*.mojo" | xargs wc -l | tail -1
+          echo "📊 Code Statistics:"
+          echo ""
+          echo "Implementation (src/):"
+          find src -name "*.mojo" -type f | xargs wc -l 2>/dev/null | tail -1 || echo "  0 total"
+          echo ""
+          echo "Tests (tests/):"
+          find tests -name "*.mojo" -type f | xargs wc -l 2>/dev/null | tail -1 || echo "  0 total"
+          echo ""
+          echo "Benchmarks (benchmarks/):"
+          find benchmarks -name "*.mojo" -type f | xargs wc -l 2>/dev/null | tail -1 || echo "  0 total"
+          echo ""
+          echo "Examples (examples/):"
+          find examples -name "*.mojo" -type f | xargs wc -l 2>/dev/null | tail -1 || echo "  0 total"
+          echo ""
+          echo "Total .mojo files:"
+          find . -name "*.mojo" -type f | wc -l
 
+      - name: Verify key source files exist
+        run: |
+          echo "✓ Verifying key source files..."
+          test -f src/protocol/connection.mojo || (echo "❌ Missing connection.mojo" && exit 1)
+          test -f src/protocol/query.mojo || (echo "❌ Missing query.mojo" && exit 1)
+          test -f src/protocol/prepared.mojo || (echo "❌ Missing prepared.mojo" && exit 1)
+          test -f src/types/numeric.mojo || (echo "❌ Missing numeric.mojo" && exit 1)
+          test -f src/types/text.mojo || (echo "❌ Missing text.mojo" && exit 1)
+          test -f src/types/temporal.mojo || (echo "❌ Missing temporal.mojo" && exit 1)
+          test -f src/pool/connection_pool.mojo || (echo "❌ Missing connection_pool.mojo" && exit 1)
+          echo "✅ Key source files OK"
+
+  # =========================================================================
+  # Docker Compose Test (No Mojo Required)
+  # =========================================================================
   docker-test:
-    name: Docker Compose Test
+    name: Docker Compose - PostgreSQL Setup
     runs-on: ubuntu-latest
 
     steps:
@@ -218,18 +144,71 @@ jobs:
 
       - name: Wait for PostgreSQL
         run: |
-          until docker-compose exec -T postgres pg_isready -U test; do
-            echo "Waiting for PostgreSQL..."
+          echo "Waiting for PostgreSQL to be ready..."
+          for i in {1..30}; do
+            if docker-compose exec -T postgres pg_isready -U test >/dev/null 2>&1; then
+              echo "✅ PostgreSQL is ready!"
+              exit 0
+            fi
+            echo "  Attempt $i/30: Not ready yet..."
             sleep 2
           done
+          echo "❌ PostgreSQL failed to start"
+          exit 1
 
       - name: Verify PostgreSQL connection
         run: |
+          echo "Testing PostgreSQL connection..."
           docker-compose exec -T postgres psql -U test -d test -c "SELECT version();"
+          echo "✅ PostgreSQL connection successful"
 
-      - name: Check initialization
+      - name: Test basic operations
         run: |
-          docker-compose exec -T postgres psql -U test -d test -c "SELECT * FROM test_connection;"
+          echo "Testing basic database operations..."
+          docker-compose exec -T postgres psql -U test -d test -c "CREATE TABLE test_table (id SERIAL PRIMARY KEY, name TEXT);"
+          docker-compose exec -T postgres psql -U test -d test -c "INSERT INTO test_table (name) VALUES ('test');"
+          docker-compose exec -T postgres psql -U test -d test -c "SELECT * FROM test_table;"
+          echo "✅ Basic operations successful"
 
       - name: Stop Docker Compose
+        if: always()
         run: docker-compose down -v
+
+
+  # =========================================================================
+  # The following jobs are DISABLED until Mojo is available on GitHub Actions
+  # =========================================================================
+
+  # unit-tests:
+  #   name: Unit Tests
+  #   runs-on: ubuntu-latest
+  #   if: false  # Disabled - Mojo not available
+  #   steps:
+  #     - name: Placeholder
+  #       run: echo "Disabled - Mojo not available on GitHub Actions"
+
+  # integration-tests:
+  #   name: Integration Tests
+  #   runs-on: ubuntu-latest
+  #   if: false  # Disabled - Mojo not available
+  #   steps:
+  #     - name: Placeholder
+  #       run: echo "Disabled - Mojo not available on GitHub Actions"
+
+  # benchmarks:
+  #   name: Benchmarks
+  #   runs-on: ubuntu-latest
+  #   if: false  # Disabled - Mojo not available
+  #   steps:
+  #     - name: Placeholder
+  #       run: echo "Disabled - Mojo not available on GitHub Actions"
+
+  # =========================================================================
+  # Future: Enable when Mojo becomes available
+  # =========================================================================
+  # Once Modular provides official GitHub Actions support:
+  # 1. Uncomment the 'on:' triggers at the top
+  # 2. Add proper Mojo installation step
+  # 3. Uncomment and fix the disabled jobs above
+  # 4. Update test file paths to match actual files
+  # 5. Remove the 'if: false' conditions
