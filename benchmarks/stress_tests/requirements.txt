@@ -1,0 +1,20 @@
+# Stress Test Suite Requirements
+
+# Database driver (for reference implementation)
+psycopg2-binary>=2.9.9
+
+# System monitoring
+psutil>=5.9.0
+
+# Statistical analysis
+numpy>=1.24.0
+
+# Data validation
+pytest>=7.4.0
+
+# JSON handling (stdlib, but listed for documentation)
+# json
+
+# Threading/multiprocessing (stdlib)
+# threading
+# multiprocessing
